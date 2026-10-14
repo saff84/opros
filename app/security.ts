@@ -1,0 +1,9 @@
+import {env} from "./runtime";
+export function cookie(req:Request,key:string){return req.headers.get("cookie")?.split(";").map(s=>s.trim()).find(s=>s.startsWith(key+"="))?.slice(key.length+1)}
+export function originOK(req:Request){return req.headers.get("origin")===(process.env.PUBLIC_ORIGIN||new URL(req.url).origin)}
+export async function adminToken(){const password=(env as any).ADMIN_PASSWORD;if(!password)return null;const data=new TextEncoder().encode("sanext-admin:"+password);const hash=await crypto.subtle.digest("SHA-256",data);return Array.from(new Uint8Array(hash)).map(b=>b.toString(16).padStart(2,"0")).join("")}
+export async function isAdmin(req:Request){const token=await adminToken();return !!token&&(cookie(req,"survey_admin")===token||req.headers.get("authorization")===`Bearer ${token}`)}
+export function json(data:any,status=200,headers:any={}){return Response.json(data,{status,headers:{"Cache-Control":"no-store",...headers}})}
+async function sessionKey(){const secret=(env as any).ADMIN_PASSWORD;if(!secret)throw Error('Session signing secret unavailable');return crypto.subtle.importKey('raw',new TextEncoder().encode('survey-session:'+secret),{name:'HMAC',hash:'SHA-256'},false,['sign','verify'])}
+export async function signSession(id:string){const sig=await crypto.subtle.sign('HMAC',await sessionKey(),new TextEncoder().encode(id));return id+'.'+Array.from(new Uint8Array(sig)).map(b=>b.toString(16).padStart(2,'0')).join('')}
+export async function verifySession(token:unknown){if(typeof token!=='string'||! /^[0-9a-f-]{36}\.[0-9a-f]{64}$/.test(token))return null;const [id,hex]=token.split('.');const signature=Uint8Array.from(hex.match(/../g)!,x=>parseInt(x,16));return await crypto.subtle.verify('HMAC',await sessionKey(),signature,new TextEncoder().encode(id))?id:null}

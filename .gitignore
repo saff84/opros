@@ -1,0 +1,51 @@
+# Зависимости
+node_modules/
+
+# Сборка Next.js
+.next/
+out/
+dist/
+build/
+next-env.d.ts
+*.tsbuildinfo
+
+# Настройки с паролями
+.env
+.env.*
+!.env.example
+
+# База данных SQLite
+data/
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-wal
+*.db-shm
+
+# Резервные копии и выгрузки ответов
+backups/
+responses.json
+import.json
+SANEXT-survey-results*.json
+SANEXT-survey-summary*.csv
+
+# Логи
+logs/
+*.log
+
+# Редакторы и ОС
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Временные файлы и архивы
+*.tmp
+*.bak
+*.swp
+*.zip
+*.tar
+*.tar.gz
+

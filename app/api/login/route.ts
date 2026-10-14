@@ -1,0 +1,3 @@
+import {env} from "../../runtime";import {json,originOK,adminToken} from "../../security";
+export async function POST(req:Request){if(!originOK(req))return json({},403);const {password}=await req.json() as {password?:string};const secret=(env as any).ADMIN_PASSWORD;if(!secret||password!==secret)return json({error:"Неверный пароль"},401);return json({ok:true,token:await adminToken()},200,{"Set-Cookie":`survey_admin=${await adminToken()}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=28800`})}
+export async function DELETE(req:Request){if(!originOK(req))return json({},403);return json({ok:true},200,{"Set-Cookie":"survey_admin=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0"})}
