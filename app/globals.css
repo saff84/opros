@@ -2342,3 +2342,13 @@ input[type="color"] {
     print-color-adjust: exact;
   }
 }
+.start-form-settings { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(0,1fr); gap:20px; align-items:start; }
+.start-form-preview { position:sticky; top:20px; min-width:0; }
+.start-form-preview .welcome { padding:16px 0; }
+.start-form-preview .welcome h2 { font-size:28px; }
+.start-form-preview .primary { width:100%; }
+.start-field-config { border:1px solid var(--line,#ddd); border-radius:12px; margin:16px 0; padding:16px; min-width:0; }
+.start-field-config legend { font-weight:600; padding:0 6px; }
+.start-screen .field-help { display:block; margin-top:6px; }
+.start-screen .participant-context h3 { font-size:18px; }
+@media(max-width:900px) { .start-form-settings {grid-template-columns:1fr;} .start-form-preview {position:static;} }

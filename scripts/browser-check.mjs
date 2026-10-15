@@ -101,9 +101,7 @@ export async function runBrowserChecks({ origin, password }) {
     await expect(
       participant.getByRole("heading", { name: "Старый вопрос", exact: true }),
     ).toHaveCount(0);
-    await participant
-      .getByRole("button", { name: /Другое$/ })
-      .click();
+    await participant.getByRole("button", { name: /Другое$/ }).click();
     await participant
       .getByLabel("Уточните «Другое»", { exact: true })
       .fill("Свой вариант в браузере");
@@ -114,14 +112,12 @@ export async function runBrowserChecks({ origin, password }) {
       participant.getByRole("heading", { name: "Спасибо за ваше мнение." }),
     ).toBeVisible();
     await admin.reload();
-    const card = admin
-      .locator("article.survey-card")
-      .filter({
-        has: admin.getByRole("heading", {
-          name: "Проверка браузера",
-          exact: true,
-        }),
-      });
+    const card = admin.locator("article.survey-card").filter({
+      has: admin.getByRole("heading", {
+        name: "Проверка браузера",
+        exact: true,
+      }),
+    });
     await card
       .getByRole("button", { name: "Редактировать", exact: true })
       .click();
@@ -160,11 +156,57 @@ export async function runBrowserChecks({ origin, password }) {
       .click();
     await expect(admin.locator(".question-editor")).toHaveCount(2);
     await admin
+      .getByRole("button", { name: "Стартовая форма", exact: true })
+      .click();
+    await admin
+      .getByLabel("Имя: режим", { exact: true })
+      .selectOption("required");
+    await admin.getByLabel("Имя: название", { exact: true }).fill("Ваше имя");
+    await admin
+      .getByLabel("Отдел: режим", { exact: true })
+      .selectOption("required");
+    await admin
+      .getByLabel("Регион: режим", { exact: true })
+      .selectOption("hidden");
+    await expect(
+      admin.locator('.start-form-preview input[name="region"]'),
+    ).toHaveCount(0);
+    await admin
       .getByRole("button", { name: "Сохранить изменения", exact: true })
       .click();
     await expect(
       admin.getByRole("button", { name: "Обзор и графики", exact: true }),
     ).toBeVisible();
+    const freshContext = await browser.newContext({ baseURL: origin });
+    try {
+      const fresh = await freshContext.newPage();
+      fresh.on("pageerror", (error) => errors.push(error.message));
+      await fresh.goto("/?survey=" + survey.id);
+      await fresh
+        .getByRole("button", { name: "Начать опрос →", exact: true })
+        .click();
+      await expect(fresh.locator('.start-screen [role="alert"]')).toContainText("Ваше имя");
+      await fresh.locator('input[name="name"]').fill("Участник браузера");
+      await fresh
+        .getByRole("button", { name: "Начать опрос →", exact: true })
+        .click();
+      await expect(fresh.locator('.start-screen [role="alert"]')).toContainText("Отдел");
+      await fresh.locator('input[name="department"]').fill("Продажи");
+      await fresh.screenshot({path:resolve("artifacts/start-form.png"),fullPage:true});
+      await expect(fresh.locator('input[name="region"]')).toHaveCount(0);
+      await fresh
+        .getByRole("button", { name: "Начать опрос →", exact: true })
+        .click();
+      await expect(
+        fresh.getByRole("heading", { name: "Постоянный вопрос", exact: true }),
+      ).toBeVisible();
+      await fresh.reload();
+      await expect(fresh.locator('input[name="department"]')).toHaveValue(
+        "Продажи",
+      );
+    } finally {
+      await freshContext.close();
+    }
     await admin.locator(".share-panel summary").click();
     await admin
       .locator(".share-panel")

@@ -9,6 +9,8 @@ import {
 } from "../survey-model";
 import { QuestionInput, theme } from "../question-input";
 import WelcomeEditor from "./welcome-editor";
+import StartFormEditor from "./start-form-editor";
+import { validStartForm } from "../../scripts/start-form.mjs";
 import { WelcomeBlock } from "../welcome-block";
 import { groupQuestionPages, visiblePages } from "../survey-pages";
 import { publicationCheck } from "../publication";
@@ -109,6 +111,13 @@ export default function Editor({
   }
   async function save() {
     setError("");
+    if (!validStartForm(s.startForm)) {
+      setTab("start");
+      setError(
+        "Проверьте стартовую форму: названия полей и текст кнопки не должны быть пустыми; соблюдайте ограничения длины.",
+      );
+      return;
+    }
     const clean = (values: string[]) =>
       values.map((value) => value.trim()).filter(Boolean);
     const prepared = {
@@ -212,6 +221,12 @@ export default function Editor({
         )}
       </div>
       <div className="view-tabs">
+        <button
+          className={tab === "start" ? "active" : ""}
+          onClick={() => setTab("start")}
+        >
+          Стартовая форма
+        </button>
         <button
           className={tab === "check" ? "active" : ""}
           onClick={() => setTab("check")}
@@ -935,6 +950,11 @@ export default function Editor({
             Открыть предпросмотр
           </button>
         </section>
+      ) : tab === "start" ? (
+        <StartFormEditor
+          survey={s}
+          onChange={(startForm) => update({ startForm })}
+        />
       ) : tab === "welcome" ? (
         <WelcomeEditor
           survey={s}

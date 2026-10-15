@@ -5,6 +5,7 @@
 } from "./branching.mjs";
 import { detectImage, MAX_IMAGE_BYTES } from "./image-format.mjs";
 import { validWelcome, surveyImageSources } from "./welcome.mjs";
+import { validStartForm } from "./start-form.mjs";
 import {
   singleTypes,
   questionTypes,
@@ -55,6 +56,7 @@ if (
   throw Error("Invalid survey definition");
 if (branchingError(survey)) throw Error(branchingError(survey));
 if (!validWelcome(survey.welcome)) throw Error("Invalid welcome block");
+if (!validStartForm(survey.startForm)) throw Error("Invalid start form");
 if (!validSchedule(survey)) throw Error("Invalid survey schedule");
 const version = survey.schemaVersion || 1;
 if (!Number.isInteger(version) || version < 1)

@@ -110,6 +110,7 @@ export async function POST(req: Request) {
       background: input.background,
       status: input.status,
       questions: input.questions,
+      ...(input.startForm ? { startForm: input.startForm } : {}),
       ...(input.startsAt ? { startsAt: input.startsAt } : {}),
       ...(input.endsAt ? { endsAt: input.endsAt } : {}),
       ...(input.welcome ? { welcome: input.welcome } : {}),

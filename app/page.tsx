@@ -1,5 +1,7 @@
 "use client";
 import { WelcomeBlock } from "./welcome-block";
+import StartScreen, { ParticipantValues } from "./start-screen";
+import { participantError } from "../scripts/start-form.mjs";
 import { visibleQuestions, sanitizeAnswers } from "./branching";
 import { useEffect, useRef, useState } from "react";
 import Brand from "./brand";
@@ -165,6 +167,8 @@ function SurveyForm({
     initializing = useRef(false),
     alive = useRef(true);
   const activeQuestions = visibleQuestions(s, answers);
+  const participant = useRef({ name, department, region });
+  participant.current = { name, department, region };
   const pages = visiblePages(s, answers);
   const currentStep = step < 0 ? -1 : Math.min(step, pages.length - 1);
   const storage = "sanext-v2-" + s.id;
@@ -184,8 +188,8 @@ function SurveyForm({
         surveyId: s.id,
         revision: s.revision,
         sessionToken: token.current,
-        department,
-        region,
+        department: participant.current.department,
+        region: participant.current.region,
         source:
           typeof location !== "undefined"
             ? new URLSearchParams(location.search).get("source") ||
@@ -316,8 +320,19 @@ function SurveyForm({
         !validateAnswers(s, backup.answers, false);
       setAnswers(recover ? backup.answers : d.answers);
       setName(recover ? backup.name : d.name);
-      setDepartment(d.context?.department || "");
-      setRegion(d.context?.region || "");
+      const restoredDepartment =
+        (recover ? backup.department : undefined) ??
+        d.context?.department ??
+        "";
+      const restoredRegion =
+        (recover ? backup.region : undefined) ?? d.context?.region ?? "";
+      setDepartment(restoredDepartment);
+      setRegion(restoredRegion);
+      participant.current = {
+        name: recover ? backup.name : d.name,
+        department: restoredDepartment,
+        region: restoredRegion,
+      };
       finished.current = d.status === "completed";
       setDone(finished.current);
       setReady(true);
@@ -376,6 +391,8 @@ function SurveyForm({
           schema: JSON.stringify(s.questions),
           answers: a,
           name: n,
+          department: participant.current.department,
+          region: participant.current.region,
           dirty,
           updated: new Date().toISOString(),
         }),
@@ -397,6 +414,7 @@ function SurveyForm({
     return task;
   }
   function edit(a: AnswerMap, n: string) {
+    const editedContext = { ...participant.current };
     if (
       s.id === "legacy" &&
       (s.schemaVersion || 1) === 1 &&
@@ -433,7 +451,9 @@ function SurveyForm({
             } catch {}
             if (
               JSON.stringify(latest?.answers) === JSON.stringify(a) &&
-              latest?.name === n
+              latest?.name === n &&
+              latest?.department === editedContext.department &&
+              latest?.region === editedContext.region
             )
               backup(a, n, false);
           }
@@ -441,7 +461,32 @@ function SurveyForm({
         .catch((e) => setError(e.message));
     }, 1100);
   }
+  function editParticipant(values: ParticipantValues) {
+    participant.current = values;
+    setDepartment(values.department);
+    setRegion(values.region);
+    edit(answers, values.name);
+  }
+  async function beginSurvey() {
+    if (timer.current) clearTimeout(timer.current);
+    setSaving(true);
+    setError("");
+    try {
+      await persist("save", answers, name);
+      setStep(0);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
   async function next() {
+    const issue = participantError(s, participant.current, true);
+    if (issue) {
+      setStep(-1);
+      setError(issue);
+      return;
+    }
     const page = pages[currentStep];
     if (page) {
       const e = pageAnswerError(s, page, answers);
@@ -508,59 +553,14 @@ function SurveyForm({
               </a>
             </div>
           ) : step < 0 ? (
-            <div className="welcome">
-              <span className="eyebrow">ОПРОС КОМАНДЫ SANEXT</span>
-              <h2>{s.description || s.title}</h2>
-              <p className="pre">{s.intro}</p>
-              <label className="label">
-                Как к вам обращаться? <span>необязательно</span>
-                <input
-                  maxLength={120}
-                  value={name}
-                  disabled={!ready}
-                  onChange={(e) => edit(answers, e.target.value)}
-                  placeholder="Имя / отдел / регион"
-                />
-              </label>
-              <div className="note">
-                Можно ответить без имени. Черновик сохраняется на сервере и на
-                этом устройстве.
-              </div>
-              <details className="participant-context">
-                <summary>Отдел и регион · необязательно</summary>
-                <p className="small">
-                  Используются для сравнения результатов между командами. Можно
-                  оставить пустыми.
-                </p>
-                <div className="form-grid">
-                  <label className="label">
-                    Отдел
-                    <input
-                      maxLength={160}
-                      value={department}
-                      disabled={!ready}
-                      onChange={(e) => setDepartment(e.target.value)}
-                    />
-                  </label>
-                  <label className="label">
-                    Регион
-                    <input
-                      maxLength={160}
-                      value={region}
-                      disabled={!ready}
-                      onChange={(e) => setRegion(e.target.value)}
-                    />
-                  </label>
-                </div>
-              </details>
-              <button
-                className="primary"
-                disabled={!ready || saving}
-                onClick={() => setStep(0)}
-              >
-                {ready ? "Начать опрос →" : "Подключаем сохранение…"}
-              </button>
-            </div>
+            <StartScreen
+              survey={s}
+              values={{ name, department, region }}
+              onChange={editParticipant}
+              onBegin={beginSurvey}
+              disabled={!ready}
+              submitting={saving}
+            />
           ) : (
             <>
               <div className="progress-label">

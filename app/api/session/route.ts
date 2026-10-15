@@ -13,6 +13,10 @@ import {
 import { emptyAnswers, validateAnswers, AnswerMap } from "../../survey-model";
 import { isSurveyOpen } from "../../../scripts/survey-features.mjs";
 import { visiblePages } from "../../survey-pages";
+import {
+  participantError,
+  cleanParticipant,
+} from "../../../scripts/start-form.mjs";
 export async function POST(req: Request) {
   try {
     if (!originOK(req)) return json({ error: "Запрос отклонён" }, 403);
@@ -160,12 +164,17 @@ export async function POST(req: Request) {
     if (body.action === "begin" || body.action === "page") {
       const entry = db
         .prepare(
-          "SELECT schema_version,answers FROM entries WHERE id=? AND survey_id=?",
+          "SELECT schema_version,answers,name FROM entries WHERE id=? AND survey_id=?",
         )
         .get(id, s.id) as
-        { schema_version: number; answers: string } | undefined;
+        { schema_version: number; answers: string; name: string } | undefined;
       if (!entry || entry.schema_version !== (s.schemaVersion || 1))
         return json({ error: "Сессия другой версии" }, 409);
+      const context = db
+        .prepare("SELECT department,region FROM entry_context WHERE entry_id=?")
+        .get(id);
+      const issue = participantError(s, { ...context, name: entry.name }, true);
+      if (issue) return json({ error: issue }, 400);
       if (!rateLimit("events:" + id, 600, 3600_000))
         return json({ error: "Лимит событий" }, 429);
       const pageId = body.action === "page" ? body.pageId : "";
@@ -205,6 +214,18 @@ export async function POST(req: Request) {
         (typeof body[key] !== "string" || body[key].length > 160)
       )
         return json({ error: "Отдел и регион: до 160 символов" }, 400);
+    const context = db
+      .prepare("SELECT department,region FROM entry_context WHERE entry_id=?")
+      .get(id);
+    const values = {
+      ...context,
+      name: body.name,
+      ...(body.department !== undefined ? { department: body.department } : {}),
+      ...(body.region !== undefined ? { region: body.region } : {}),
+    };
+    const issue = participantError(s, values, body.action === "submit");
+    if (issue) return json({ error: issue }, 400);
+    const participant = cleanParticipant(s, values);
     const result = db
       .prepare(
         "UPDATE entries SET updated=?,status=?,name=?,answers=? WHERE id=? AND survey_id=? AND status!='completed' AND schema_version=?",
@@ -212,7 +233,7 @@ export async function POST(req: Request) {
       .run(
         new Date().toISOString(),
         body.action === "submit" ? "completed" : "draft",
-        body.name.trim(),
+        participant.name,
         JSON.stringify(sanitizeAnswers(s, body.answers)),
         id,
         s.id,
@@ -243,7 +264,7 @@ export async function POST(req: Request) {
     }
     db.prepare(
       "UPDATE entry_context SET department=COALESCE(?,department),region=COALESCE(?,region) WHERE entry_id=?",
-    ).run(body.department ?? null, body.region ?? null, id);
+    ).run(participant.department, participant.region, id);
     return json({ ok: true, id });
   } catch (error) {
     console.error("Survey request failed", error);
