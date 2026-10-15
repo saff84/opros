@@ -83,8 +83,22 @@ function AnswerInput({
       <p className="small">
         {q.type === "single"
           ? "Один вариант ответа"
-          : `Не более ${q.maxChoices} вариантов`}
+          : q.minChoices && q.minChoices === q.maxChoices
+            ? `Выберите ровно ${q.maxChoices} вариантов`
+            : q.minChoices
+              ? `Выберите от ${q.minChoices} до ${q.maxChoices} вариантов`
+              : `Не более ${q.maxChoices} вариантов`}
       </p>
+      {q.type === "multiple" && (
+        <p className="small" role="status" aria-live="polite">
+          Выбрано: {chosen.length} из {Math.min(q.maxChoices, q.options.length)}
+          .
+          {chosen.length >= q.maxChoices &&
+            " Лимит достигнут. Снимите выбранный вариант, чтобы выбрать другой."}
+          {q.exclusive.length > 0 &&
+            " Исключающий вариант можно выбрать отдельно."}
+        </p>
+      )}
       <div className="options">
         {q.options.map((o) => {
           const selected =

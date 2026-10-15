@@ -74,6 +74,14 @@ for (const q of survey.questions) {
   )
     throw Error("Invalid image reference");
   ids.add(q.id);
+  if (
+    q.type === "multiple" &&
+    q.minChoices !== undefined &&
+    (!Number.isInteger(q.minChoices) ||
+      q.minChoices < 0 ||
+      q.minChoices > q.maxChoices)
+  )
+    throw Error("Invalid minimum choices");
   for (const list of [q.options, q.rows, q.exclusive])
     if (
       !Array.isArray(list) ||
@@ -88,6 +96,12 @@ for (const q of survey.questions) {
     q.exclusive.some((x) => !q.options.includes(x))
   )
     throw Error("Invalid question configuration");
+  if (
+    q.type === "multiple" &&
+    (q.minChoices || 0) >
+      q.options.filter((x) => !q.exclusive.includes(x)).length
+  )
+    throw Error("Minimum choices exceeds available options");
 }
 const convert = (a) => ({
   usage: a.usage,
@@ -134,6 +148,15 @@ const entries = rows.map((r) => {
     )
       throw Error("Completed response is missing required answers");
     if (v === undefined) continue;
+    if (
+      q.type === "multiple" &&
+      r.status === "completed" &&
+      Array.isArray(v) &&
+      v.length &&
+      !v.some((x) => q.exclusive.includes(x)) &&
+      v.length < (q.minChoices || 0)
+    )
+      throw Error("Too few selected answers");
     if (
       (q.type === "text" && !text(v, 3000)) ||
       (q.type === "single" &&

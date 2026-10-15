@@ -9,6 +9,7 @@ export type Question = {
   options: string[];
   rows: string[];
   maxChoices: number;
+  minChoices?: number;
   exclusive: string[];
   showWhen?: ShowWhen;
   image?: { src: string; alt: string };
@@ -175,6 +176,8 @@ export function validateAnswers(
       (typeof v !== "string" || !q.options.includes(v))
     )
       return "Выберите вариант: " + q.title;
+    if (q.type === "multiple" && Array.isArray(v) && v.length > q.maxChoices)
+      return `Выберите не более ${q.maxChoices} вариантов: ${q.title}`;
     if (
       q.type === "multiple" &&
       (!Array.isArray(v) ||
@@ -184,6 +187,14 @@ export function validateAnswers(
         (v.some((x) => q.exclusive.includes(x)) && v.length > 1))
     )
       return "Проверьте варианты: " + q.title;
+    if (
+      q.type === "multiple" &&
+      complete &&
+      Array.isArray(v) &&
+      !v.some((x) => q.exclusive.includes(x)) &&
+      v.length < (q.minChoices || 0)
+    )
+      return `Выберите не менее ${q.minChoices} вариантов: ${q.title}`;
     if (q.type === "matrix") {
       if (
         !v ||
@@ -291,6 +302,15 @@ export function validateSurvey(value: unknown): value is Survey {
     if (q.type !== "text" && q.options.length < 2) return false;
     if (q.type === "matrix" && !q.rows.length) return false;
     if (q.exclusive.some((x) => !q.options.includes(x))) return false;
+    if (
+      q.type === "multiple" &&
+      q.minChoices !== undefined &&
+      (!Number.isInteger(q.minChoices) ||
+        q.minChoices < 0 ||
+        q.minChoices > q.maxChoices ||
+        q.minChoices > q.options.filter((x) => !q.exclusive.includes(x)).length)
+    )
+      return false;
   }
   return !branchingError(s);
 }

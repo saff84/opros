@@ -59,6 +59,24 @@ export default function Editor({
       })),
     };
     const branchError = branchingError(prepared);
+    const invalidLimit = prepared.questions.find(
+      (q) =>
+        q.type === "multiple" &&
+        (!Number.isInteger(q.maxChoices) ||
+          q.maxChoices < 1 ||
+          q.maxChoices > 100 ||
+          !Number.isInteger(q.minChoices ?? 0) ||
+          (q.minChoices ?? 0) < 0 ||
+          (q.minChoices ?? 0) > q.maxChoices ||
+          (q.minChoices ?? 0) >
+            q.options.filter((x) => !q.exclusive.includes(x)).length),
+    );
+    if (invalidLimit) {
+      setError(
+        `Проверьте количество ответов в вопросе «${invalidLimit.title}»: минимум от 0 до максимума и не больше числа обычных вариантов; максимум от 1 до 100.`,
+      );
+      return;
+    }
     if (branchError) {
       setError(branchError);
       return;
@@ -536,6 +554,18 @@ export default function Editor({
                 {q.type === "multiple" && (
                   <>
                     <label className="label">
+                      Минимум вариантов при заполнении
+                      <input
+                        type="number"
+                        min={0}
+                        max={Math.min(q.maxChoices, q.options.length)}
+                        value={q.minChoices ?? 0}
+                        onChange={(e) =>
+                          question(i, { minChoices: Number(e.target.value) })
+                        }
+                      />
+                    </label>
+                    <label className="label">
                       Максимум вариантов
                       <input
                         type="number"
@@ -547,6 +577,12 @@ export default function Editor({
                         }
                       />
                     </label>
+                    <p className="small">
+                      Одинаковые минимум и максимум задают точное количество.
+                      Минимум 0 оставляет только верхний лимит. Необязательный
+                      вопрос можно пропустить. Исключающий вариант выбирается
+                      один и не требует достижения минимума.
+                    </p>
                     <label className="label">
                       Исключающие варианты · каждый с новой строки
                       <span>
