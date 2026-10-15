@@ -41,12 +41,46 @@ export default function Editor({
     [busy, setBusy] = useState(false),
     [uploading, setUploading] = useState<string | null>(null),
     [error, setError] = useState(""),
+    [deletedQuestion, setDeletedQuestion] = useState<{
+      question: Question;
+      index: number;
+    } | null>(null),
     [previewAnswers, setPreviewAnswers] = useState(() => emptyAnswers(initial));
   const update = (patch: Partial<Survey>) => setS((v) => ({ ...v, ...patch }));
   const question = (i: number, patch: Partial<Question>) =>
     update({
       questions: s.questions.map((q, j) => (j === i ? { ...q, ...patch } : q)),
     });
+  const dirty = JSON.stringify(s) !== JSON.stringify(initial);
+  function removeQuestion(id: string) {
+    const index = s.questions.findIndex((q) => q.id === id);
+    if (busy || s.questions.length <= 1 || index < 0) return;
+    setDeletedQuestion({
+      question: structuredClone(s.questions[index]),
+      index,
+    });
+    setS((current) => ({
+      ...current,
+      questions: current.questions.filter((q) => q.id !== id),
+    }));
+    setError("");
+  }
+  function undoDeletion() {
+    if (!deletedQuestion) return;
+    setS((current) => {
+      if (current.questions.some((q) => q.id === deletedQuestion.question.id))
+        return current;
+      const questions = [...current.questions];
+      questions.splice(
+        Math.min(deletedQuestion.index, questions.length),
+        0,
+        deletedQuestion.question,
+      );
+      return { ...current, questions };
+    });
+    setDeletedQuestion(null);
+    setError("");
+  }
   async function save() {
     setError("");
     const clean = (values: string[]) =>
@@ -104,6 +138,10 @@ export default function Editor({
         <div>
           <span className="eyebrow">КОНСТРУКТОР ОПРОСА</span>
           <h2>{s.title || "Новый опрос"}</h2>
+          <p className="editor-save-state">
+            Вопросов: {s.questions.length} ·{" "}
+            {dirty ? "Есть несохранённые изменения" : "Изменений нет"}
+          </p>
         </div>
         <div className="actions">
           <button disabled={busy} onClick={onCancel}>
@@ -117,6 +155,35 @@ export default function Editor({
             {busy ? "Сохраняем…" : "Сохранить изменения"}
           </button>
         </div>
+        {deletedQuestion && (
+          <div
+            className="editor-deletion-notice"
+            role="status"
+            aria-live="polite"
+          >
+            <span>
+              Вопрос «{deletedQuestion.question.title}» удалён из редактора.
+              Осталось: {s.questions.length}. Нажмите «Сохранить изменения»,
+              чтобы применить удаление к опросу.
+            </span>
+            <button
+              type="button"
+              className="secondary"
+              disabled={busy}
+              onClick={undoDeletion}
+            >
+              Вернуть вопрос
+            </button>
+            {s.questions.some(
+              (q) => q.showWhen?.questionId === deletedQuestion.question.id,
+            ) && (
+              <span className="editor-deletion-warning">
+                Другие вопросы зависят от удалённого. Перед сохранением измените
+                их условия показа или верните вопрос.
+              </span>
+            )}
+          </div>
+        )}
       </div>
       <div className="view-tabs">
         <button
@@ -238,12 +305,15 @@ export default function Editor({
                     ↓
                   </button>
                   <button
-                    disabled={busy || s.questions.length === 1}
-                    onClick={() =>
-                      update({
-                        questions: s.questions.filter((_, j) => i !== j),
-                      })
+                    type="button"
+                    aria-label={`Удалить вопрос ${i + 1}: ${q.title}`}
+                    title={
+                      s.questions.length === 1
+                        ? "В опросе должен остаться хотя бы один вопрос"
+                        : "Удалить вопрос из редактора"
                     }
+                    disabled={busy || s.questions.length === 1}
+                    onClick={() => removeQuestion(q.id)}
                   >
                     Удалить
                   </button>

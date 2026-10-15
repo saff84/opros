@@ -1711,11 +1711,42 @@ input[type="color"] {
   flex-grow: 1;
 }
 .editor > .dash-title {
+  flex-wrap: wrap;
   position: sticky;
   top: 0;
   background: #f7f8fb;
   z-index: 2;
   padding: 14px 0;
+}
+.editor-save-state {
+  margin: 4px 0 0;
+  font-size: 12px;
+}
+.editor-deletion-notice {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  padding: 12px 16px;
+  border: 1px solid #a7cbbb;
+  border-radius: 10px;
+  background: #e5f4ed;
+  color: #18563e;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.editor-deletion-notice > span:first-child {
+  flex: 1;
+  min-width: 220px;
+}
+.editor-deletion-notice .secondary {
+  padding: 8px 12px;
+  font-size: 12px;
+}
+.editor-deletion-warning {
+  flex-basis: 100%;
+  font-weight: 600;
 }
 .editor h2 {
   margin: 8px 0;
