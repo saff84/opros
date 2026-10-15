@@ -35,11 +35,15 @@
 }
 export function sanitizeAnswers(s, answers) {
   const visible = visibleQuestions(s, answers);
-  return Object.fromEntries(
+  const clean = Object.fromEntries(
     visible
       .filter((q) => answers[q.id] !== undefined)
       .map((q) => [q.id, answers[q.id]]),
   );
+  for (const q of visible)
+    if (otherSelected(q, answers) && answers[otherKey(q.id)] !== undefined)
+      clean[otherKey(q.id)] = answers[otherKey(q.id)];
+  return clean;
 }
 export function branchingError(s) {
   for (let i = 0; i < s.questions.length; i++) {
@@ -78,3 +82,4 @@ export function branchingError(s) {
   }
   return null;
 }
+import { otherKey, otherSelected } from "./survey-features.mjs";

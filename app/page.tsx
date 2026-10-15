@@ -12,6 +12,8 @@ import {
   convertLegacy,
 } from "./survey-model";
 import { QuestionInput, theme } from "./question-input";
+import { visiblePages, pageAnswerError } from "./survey-pages";
+import { otherKey } from "../scripts/survey-features.mjs";
 import { SurveyChooser } from "./survey-list";
 import { tools } from "./data";
 export default function Home() {
@@ -71,6 +73,8 @@ export default function Home() {
 function SurveyForm({ survey: s }: { survey: Survey }) {
   const [answers, setAnswers] = useState<AnswerMap>(() => emptyAnswers(s)),
     [name, setName] = useState(""),
+    [department, setDepartment] = useState(""),
+    [region, setRegion] = useState(""),
     [step, setStep] = useState(-1),
     [ready, setReady] = useState(false),
     [done, setDone] = useState(false),
@@ -87,6 +91,8 @@ function SurveyForm({ survey: s }: { survey: Survey }) {
     initializing = useRef(false),
     alive = useRef(true);
   const activeQuestions = visibleQuestions(s, answers);
+  const pages = visiblePages(s, answers);
+  const currentStep = step < 0 ? -1 : Math.min(step, pages.length - 1);
   const storage = "sanext-v2-" + s.id;
   const tokenStorage = storage + "-token",
     backupStorage =
@@ -104,6 +110,20 @@ function SurveyForm({ survey: s }: { survey: Survey }) {
         surveyId: s.id,
         revision: s.revision,
         sessionToken: token.current,
+        department,
+        region,
+        source:
+          typeof location !== "undefined"
+            ? new URLSearchParams(location.search).get("source") ||
+              new URLSearchParams(location.search).get("utm_source") ||
+              "direct"
+            : "direct",
+        campaign:
+          typeof location !== "undefined"
+            ? new URLSearchParams(location.search).get("campaign") ||
+              new URLSearchParams(location.search).get("utm_campaign") ||
+              ""
+            : "",
       }),
     });
     const data = await r
@@ -176,6 +196,8 @@ function SurveyForm({ survey: s }: { survey: Survey }) {
         !validateAnswers(s, backup.answers, false);
       setAnswers(recover ? backup.answers : d.answers);
       setName(recover ? backup.name : d.name);
+      setDepartment(d.context?.department || "");
+      setRegion(d.context?.region || "");
       finished.current = d.status === "completed";
       setDone(finished.current);
       setReady(true);
@@ -200,6 +222,30 @@ function SurveyForm({ survey: s }: { survey: Survey }) {
       if (timer.current) clearTimeout(timer.current);
     };
   }, []);
+  useEffect(() => {
+    if (
+      !ready ||
+      done ||
+      currentStep < 0 ||
+      !pages[currentStep] ||
+      !token.current
+    )
+      return;
+    const send = (action: string, pageId = "") =>
+      fetch("/api/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          pageId,
+          surveyId: s.id,
+          sessionToken: token.current,
+        }),
+        keepalive: true,
+      }).catch(() => {});
+    void send("begin");
+    void send("page", pages[currentStep].id);
+  }, [ready, done, currentStep, pages[currentStep]?.id]);
   function backup(a: AnswerMap, n: string, dirty = true) {
     try {
       localStorage.setItem(
@@ -276,16 +322,15 @@ function SurveyForm({ survey: s }: { survey: Survey }) {
     }, 1100);
   }
   async function next() {
-    const q = activeQuestions[step];
-    if (q) {
-      const single = { ...s, questions: [{ ...q, showWhen: undefined }] };
-      const e = validateAnswers(single, { [q.id]: answers[q.id] }, true);
+    const page = pages[currentStep];
+    if (page) {
+      const e = pageAnswerError(s, page, answers);
       if (e) {
         setError(e);
         return;
       }
     }
-    const last = step === activeQuestions.length - 1;
+    const last = currentStep === pages.length - 1;
     if (last) {
       const e = validateAnswers(s, answers, true);
       if (e) {
@@ -306,7 +351,7 @@ function SurveyForm({ survey: s }: { survey: Survey }) {
           if (s.id === "legacy")
             localStorage.removeItem("sanext-survey-backup");
         } catch {}
-      } else setStep(step + 1);
+      } else setStep(currentStep + 1);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e) {
       setError((e as Error).message);
@@ -314,7 +359,7 @@ function SurveyForm({ survey: s }: { survey: Survey }) {
       setSaving(false);
     }
   }
-  const q = activeQuestions[step];
+  const currentPage = pages[currentStep];
   return (
     <div className="survey-shell" style={theme(s)}>
       <header>
@@ -356,6 +401,33 @@ function SurveyForm({ survey: s }: { survey: Survey }) {
                 Можно ответить без имени. Черновик сохраняется на сервере и на
                 этом устройстве.
               </div>
+              <details className="participant-context">
+                <summary>Отдел и регион · необязательно</summary>
+                <p className="small">
+                  Используются для сравнения результатов между командами. Можно
+                  оставить пустыми.
+                </p>
+                <div className="form-grid">
+                  <label className="label">
+                    Отдел
+                    <input
+                      maxLength={160}
+                      value={department}
+                      disabled={!ready}
+                      onChange={(e) => setDepartment(e.target.value)}
+                    />
+                  </label>
+                  <label className="label">
+                    Регион
+                    <input
+                      maxLength={160}
+                      value={region}
+                      disabled={!ready}
+                      onChange={(e) => setRegion(e.target.value)}
+                    />
+                  </label>
+                </div>
+              </details>
               <button
                 className="primary"
                 disabled={!ready || saving}
@@ -368,24 +440,22 @@ function SurveyForm({ survey: s }: { survey: Survey }) {
             <>
               <div className="progress-label">
                 <span>
-                  ВОПРОС {step + 1} / {activeQuestions.length}
+                  СТРАНИЦА {currentStep + 1} / {pages.length}
                 </span>
-                <span>
-                  {Math.round((step / activeQuestions.length) * 100)}%
-                </span>
+                <span>{Math.round((currentStep / pages.length) * 100)}%</span>
               </div>
               <div className="progress">
                 <div
-                  style={{ width: (step / activeQuestions.length) * 100 + "%" }}
+                  style={{ width: (currentStep / pages.length) * 100 + "%" }}
                 />
               </div>
               <div className="steps">
-                {activeQuestions.map((x, i) => (
+                {pages.map((x, i) => (
                   <button
                     key={x.id}
-                    disabled={i > step || saving}
-                    className={i === step ? "active" : ""}
-                    aria-label={"Вопрос " + (i + 1)}
+                    disabled={i > currentStep || saving}
+                    className={i === currentStep ? "active" : ""}
+                    aria-label={"Страница " + (i + 1)}
                     onClick={() => {
                       setStep(i);
                       setError("");
@@ -395,41 +465,53 @@ function SurveyForm({ survey: s }: { survey: Survey }) {
                   </button>
                 ))}
               </div>
-              <h2>{q.title}</h2>
-              <p>{q.description}</p>
-              <span className="small">
-                {q.required ? "Обязательный вопрос" : "Можно пропустить"}
-              </span>
-              <QuestionInput
-                question={
-                  s.id === "legacy" &&
-                  (s.schemaVersion || 1) === 1 &&
-                  q.id === "benefit"
-                    ? {
-                        ...q,
-                        options: q.options.filter(
-                          (option) =>
-                            !tools.includes(option) ||
-                            (answers.usage as Record<string, number>)[
-                              option
-                            ] === 0 ||
-                            (answers.usage as Record<string, number>)[
-                              option
-                            ] === 1,
-                        ),
-                      }
-                    : q
-                }
-                value={answers[q.id]}
-                disabled={saving || !ready}
-                onChange={(v) => edit({ ...answers, [q.id]: v }, name)}
-              />
+              {currentPage?.questions.map((q) => (
+                <section
+                  className="page-question"
+                  key={q.id}
+                  aria-label={q.title}
+                >
+                  <h2>{q.title}</h2>
+                  <p>{q.description}</p>
+                  <span className="small">
+                    {q.required ? "Обязательный вопрос" : "Можно пропустить"}
+                  </span>
+                  <QuestionInput
+                    otherValue={String(answers[otherKey(q.id)] || "")}
+                    onOtherChange={(value) =>
+                      edit({ ...answers, [otherKey(q.id)]: value }, name)
+                    }
+                    question={
+                      s.id === "legacy" &&
+                      (s.schemaVersion || 1) === 1 &&
+                      q.id === "benefit"
+                        ? {
+                            ...q,
+                            options: q.options.filter(
+                              (option) =>
+                                !tools.includes(option) ||
+                                (answers.usage as Record<string, number>)[
+                                  option
+                                ] === 0 ||
+                                (answers.usage as Record<string, number>)[
+                                  option
+                                ] === 1,
+                            ),
+                          }
+                        : q
+                    }
+                    value={answers[q.id]}
+                    disabled={saving || !ready}
+                    onChange={(v) => edit({ ...answers, [q.id]: v }, name)}
+                  />
+                </section>
+              ))}
               <div className="navigation">
                 <button
                   className="secondary"
                   disabled={saving}
                   onClick={() => {
-                    setStep(step - 1);
+                    setStep(currentStep - 1);
                     setError("");
                   }}
                 >
@@ -438,7 +520,7 @@ function SurveyForm({ survey: s }: { survey: Survey }) {
                 <button className="primary" disabled={saving} onClick={next}>
                   {saving
                     ? "Сохраняем…"
-                    : step === activeQuestions.length - 1
+                    : currentStep === pages.length - 1
                       ? "Отправить ответы ✓"
                       : "Далее →"}
                 </button>

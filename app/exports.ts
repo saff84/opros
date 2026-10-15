@@ -34,6 +34,10 @@ export function responseTable(s: Survey, rows: Entry[]): string[][] {
       "Статус",
       "Создано (UTC)",
       "Обновлено (UTC)",
+      "Источник",
+      "Кампания",
+      "Отдел",
+      "Регион",
       ...s.questions.map((q) => q.title),
     ],
     ...rows.map((r) => {
@@ -48,6 +52,10 @@ export function responseTable(s: Survey, rows: Entry[]): string[][] {
         ],
         r.created,
         r.updated,
+        r.source || "direct",
+        r.campaign || "",
+        r.department || "",
+        r.region || "",
         ...s.questions.map((q) =>
           visible.has(q.id)
             ? answerText(q, r.answers)
@@ -197,6 +205,22 @@ export async function exportResults(format: string, s: Survey, rows: Entry[]) {
     (s.schemaVersion || 1);
   if (format === "json") {
     const sources = surveyImageSources(s);
+    const eventResponse = await fetch(
+      "/api/results?survey=" +
+        encodeURIComponent(s.id) +
+        "&version=" +
+        (s.schemaVersion || 1),
+      { cache: "no-store" },
+    );
+    if (!eventResponse.ok)
+      throw Error(
+        "Не удалось выгрузить историю прохождения. Войдите в кабинет заново.",
+      );
+    const eventData = await eventResponse.json();
+    const rowIds = new Set(rows.map((r) => r.id));
+    const events = (eventData.events || []).filter(
+      (event: { entry_id: string }) => rowIds.has(event.entry_id),
+    );
     const images = await Promise.all(
       sources.map(async (src) => {
         const response = await fetch(src + "?format=json", {
@@ -217,6 +241,7 @@ export async function exportResults(format: string, s: Survey, rows: Entry[]) {
           survey: s,
           rows,
           images,
+          events,
         },
         null,
         2,

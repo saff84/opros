@@ -1,6 +1,14 @@
 ﻿import { visibleQuestions, branchingError, ShowWhen } from "./branching";
 import { tools, ratings, barriers, needs, titles, Answers } from "./data";
 import { validWelcome } from "../scripts/welcome.mjs";
+import {
+  singleTypes,
+  questionTypes,
+  validSchedule,
+  validFeatureQuestion,
+  knownAnswerKey,
+  featureAnswerError,
+} from "../scripts/survey-features.mjs";
 export type Welcome = {
   eyebrow?: string;
   heading?: string;
@@ -17,10 +25,22 @@ export type Welcome = {
   images?: { src: string; alt: string }[];
 };
 export type Question = {
+  startNewPage?: boolean;
   id: string;
   title: string;
   description: string;
-  type: "text" | "single" | "multiple" | "matrix";
+  type:
+    | "text"
+    | "single"
+    | "multiple"
+    | "matrix"
+    | "rating"
+    | "stars"
+    | "nps"
+    | "ranking"
+    | "image";
+  otherOption?: string;
+  optionImages?: Record<string, { src: string; alt: string }>;
   required: boolean;
   options: string[];
   rows: string[];
@@ -31,6 +51,8 @@ export type Question = {
   image?: { src: string; alt: string };
 };
 export type Survey = {
+  startsAt?: string;
+  endsAt?: string;
   welcome?: Welcome;
   id: string;
   title: string;
@@ -49,6 +71,10 @@ export type Survey = {
 export type Answer = string | string[] | Record<string, number>;
 export type AnswerMap = Record<string, Answer>;
 export type Entry = {
+  source?: string;
+  campaign?: string;
+  department?: string;
+  region?: string;
   id: string;
   survey_id: string;
   created: string;
@@ -155,7 +181,11 @@ export function emptyAnswers(s: Survey): AnswerMap {
   return Object.fromEntries(
     s.questions.map((q) => [
       q.id,
-      q.type === "matrix" ? {} : q.type === "multiple" ? [] : "",
+      q.type === "matrix"
+        ? {}
+        : ["multiple", "ranking"].includes(q.type)
+          ? []
+          : "",
     ]),
   );
 }
@@ -167,15 +197,18 @@ export function validateAnswers(
   if (!value || typeof value !== "object" || Array.isArray(value))
     return "Некорректные ответы";
   const a = value as AnswerMap;
-  if (Object.keys(a).some((k) => !s.questions.some((q) => q.id === k)))
+  if (Object.keys(a).some((k) => !knownAnswerKey(s, k)))
     return "Неизвестный вопрос";
   for (const q of visibleQuestions(s, a)) {
+    const featureError = featureAnswerError(q, a, complete);
+    if (featureError) return featureError;
     const v = a[q.id],
       missing = v === undefined || v === "" || (Array.isArray(v) && !v.length);
     if (
       v !== undefined &&
-      (((q.type === "text" || q.type === "single") && typeof v !== "string") ||
-        (q.type === "multiple" && !Array.isArray(v)) ||
+      (((q.type === "text" || singleTypes.includes(q.type)) &&
+        typeof v !== "string") ||
+        (["multiple", "ranking"].includes(q.type) && !Array.isArray(v)) ||
         (q.type === "matrix" &&
           (!v || typeof v !== "object" || Array.isArray(v))))
     )
@@ -189,7 +222,7 @@ export function validateAnswers(
     if (q.type === "text" && complete && q.required && !String(v).trim())
       return "Заполните: " + q.title;
     if (
-      q.type === "single" &&
+      singleTypes.includes(q.type) &&
       (typeof v !== "string" || !q.options.includes(v))
     )
       return "Выберите вариант: " + q.title;
@@ -265,6 +298,7 @@ export function validateSurvey(value: unknown): value is Survey {
   if (!value || typeof value !== "object") return false;
   const s = value as Survey;
   if (!validWelcome(s.welcome)) return false;
+  if (!validSchedule(s)) return false;
   if (
     typeof s.title !== "string" ||
     !s.title.trim() ||
@@ -294,7 +328,7 @@ export function validateSurvey(value: unknown): value is Survey {
       typeof q.description !== "string" ||
       q.description.length > 2000 ||
       typeof q.required !== "boolean" ||
-      !["text", "single", "multiple", "matrix"].includes(q.type) ||
+      !questionTypes.includes(q.type) ||
       !Number.isInteger(q.maxChoices) ||
       q.maxChoices < 1 ||
       q.maxChoices > 100
@@ -309,6 +343,8 @@ export function validateSurvey(value: unknown): value is Survey {
     )
       return false;
     ids.add(q.id);
+    if (q.startNewPage !== undefined && typeof q.startNewPage !== "boolean")
+      return false;
     for (const list of [q.options, q.rows, q.exclusive])
       if (
         !Array.isArray(list) ||
@@ -320,6 +356,9 @@ export function validateSurvey(value: unknown): value is Survey {
     if (q.type !== "text" && q.options.length < 2) return false;
     if (q.type === "matrix" && !q.rows.length) return false;
     if (q.exclusive.some((x) => !q.options.includes(x))) return false;
+    if (!validFeatureQuestion(q)) return false;
+    if (s.questions.some((p) => p.id !== q.id && p.id === q.id + "__other"))
+      return false;
     if (
       q.type === "multiple" &&
       q.minChoices !== undefined &&

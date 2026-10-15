@@ -225,6 +225,7 @@ export async function runHttpChecks({ origin, password }) {
       {
         ...definition.questions[0],
         id: "details",
+        startNewPage: false,
         showWhen: { questionId: "gate", operator: "equals", value: "Yes" },
       },
     ],
@@ -237,6 +238,7 @@ export async function runHttpChecks({ origin, password }) {
   assert.equal(branchCreated.status, 200);
   const branchSurvey = (await branchCreated.json()).survey;
   assert.equal(branchSurvey.welcome.heading, "Docker welcome");
+  assert.equal(branchSurvey.questions[1].startNewPage, false);
   assert.equal(
     (await fetch(origin + image.src)).headers.get("content-type"),
     "image/png",

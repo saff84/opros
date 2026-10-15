@@ -199,7 +199,7 @@ test("Question displays range, exact count, selected count and maximum reached h
   );
   assert.match(editor, /Минимум вариантов/);
   assert.match(editor, /Максимум вариантов/);
-  assert.equal((editor.match(/<details\b/g) || []).length, 2);
+  assert.equal((editor.match(/<details\b/g) || []).length, 3);
   assert.ok(
     editor.indexOf("Формулировка") < editor.indexOf("Картинка к вопросу"),
   );

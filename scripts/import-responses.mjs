@@ -5,6 +5,14 @@
 } from "./branching.mjs";
 import { detectImage, MAX_IMAGE_BYTES } from "./image-format.mjs";
 import { validWelcome, surveyImageSources } from "./welcome.mjs";
+import {
+  singleTypes,
+  questionTypes,
+  validSchedule,
+  validFeatureQuestion,
+  knownAnswerKey,
+  featureAnswerError,
+} from "./survey-features.mjs";
 import { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
 if (!process.argv[2])
@@ -47,6 +55,7 @@ if (
   throw Error("Invalid survey definition");
 if (branchingError(survey)) throw Error(branchingError(survey));
 if (!validWelcome(survey.welcome)) throw Error("Invalid welcome block");
+if (!validSchedule(survey)) throw Error("Invalid survey schedule");
 const version = survey.schemaVersion || 1;
 if (!Number.isInteger(version) || version < 1)
   throw Error("Invalid schema version");
@@ -60,7 +69,7 @@ for (const q of survey.questions) {
     !text(q.title, 300) ||
     !q.title.trim() ||
     !text(q.description, 2000) ||
-    !["single", "multiple", "matrix", "text"].includes(q.type) ||
+    !questionTypes.includes(q.type) ||
     typeof q.required !== "boolean" ||
     !Number.isInteger(q.maxChoices) ||
     q.maxChoices < 1 ||
@@ -76,6 +85,8 @@ for (const q of survey.questions) {
   )
     throw Error("Invalid image reference");
   ids.add(q.id);
+  if (q.startNewPage !== undefined && typeof q.startNewPage !== "boolean")
+    throw Error("Invalid question page setting");
   if (
     q.type === "multiple" &&
     q.minChoices !== undefined &&
@@ -98,6 +109,8 @@ for (const q of survey.questions) {
     q.exclusive.some((x) => !q.options.includes(x))
   )
     throw Error("Invalid question configuration");
+  if (!validFeatureQuestion(q))
+    throw Error("Invalid extended question configuration");
   if (
     q.type === "multiple" &&
     (q.minChoices || 0) >
@@ -135,9 +148,22 @@ const entries = rows.map((r) => {
   )
     throw Error("Invalid response record");
   const answers = modern ? r.answers : convert(r.answers);
-  if (Object.keys(answers).some((k) => !ids.has(k)))
+  for (const key of ["source", "campaign", "department", "region"])
+    if (
+      r[key] !== undefined &&
+      r[key] !== null &&
+      (typeof r[key] !== "string" || r[key].length > 160)
+    )
+      throw Error("Invalid response context");
+  if (Object.keys(answers).some((k) => !knownAnswerKey(survey, k)))
     throw Error("Unknown question in response");
   for (const q of visibleQuestions(survey, answers)) {
+    const featureError = featureAnswerError(
+      q,
+      answers,
+      r.status === "completed",
+    );
+    if (featureError) throw Error(featureError);
     const v = answers[q.id];
     if (
       r.status === "completed" &&
@@ -161,7 +187,7 @@ const entries = rows.map((r) => {
       throw Error("Too few selected answers");
     if (
       (q.type === "text" && !text(v, 3000)) ||
-      (q.type === "single" &&
+      (singleTypes.includes(q.type) &&
         (typeof v !== "string" || (v !== "" && !q.options.includes(v)))) ||
       (q.type === "multiple" &&
         (!Array.isArray(v) ||
@@ -191,7 +217,7 @@ const entries = rows.map((r) => {
   };
 });
 const imageInput = modern ? input.images || [] : [];
-if (!Array.isArray(imageInput) || imageInput.length > 64)
+if (!Array.isArray(imageInput) || imageInput.length > 6064)
   throw Error("Invalid image bundle");
 const images = imageInput.map((image) => {
   if (
@@ -258,8 +284,8 @@ try {
   const insert = db.prepare(
     "INSERT OR IGNORE INTO entries (id,survey_id,created,updated,status,name,answers,schema_version) VALUES (?,?,?,?,?,?,?,?)",
   );
-  for (const r of entries)
-    inserted += Number(
+  for (const r of entries) {
+    const changes = Number(
       insert.run(
         r.id,
         survey.id,
@@ -271,6 +297,48 @@ try {
         version,
       ).changes,
     );
+    inserted += changes;
+    if (changes)
+      db.prepare(
+        "INSERT OR IGNORE INTO entry_context(entry_id,source,campaign,department,region) VALUES (?,?,?,?,?)",
+      ).run(
+        r.id,
+        r.source || "direct",
+        r.campaign || "",
+        r.department || "",
+        r.region || "",
+      );
+  }
+  const events = modern ? input.events || [] : [];
+  if (!Array.isArray(events) || events.length > entries.length * 61)
+    throw Error("Invalid event bundle");
+  const importedIds = new Set(entries.map((r) => r.id));
+  for (const event of events) {
+    if (
+      !event ||
+      !importedIds.has(event.entry_id) ||
+      event.schema_version !== version ||
+      !["begin", "page"].includes(event.event) ||
+      typeof event.page_id !== "string" ||
+      !Number.isFinite(Date.parse(event.occurred)) ||
+      (event.event === "begin" && event.page_id !== "") ||
+      (event.event === "page" &&
+        !survey.questions.some((q) => q.id === event.page_id))
+    )
+      throw Error("Invalid event");
+    const parent = db
+      .prepare("SELECT survey_id,schema_version FROM entries WHERE id=?")
+      .get(event.entry_id);
+    if (parent?.survey_id !== survey.id || parent?.schema_version !== version)
+      throw Error("Event belongs to another survey");
+    db.prepare("INSERT OR IGNORE INTO entry_events VALUES (?,?,?,?,?)").run(
+      event.entry_id,
+      version,
+      event.event,
+      event.page_id,
+      event.occurred,
+    );
+  }
   db.exec("COMMIT");
 } catch (e) {
   db.exec("ROLLBACK");

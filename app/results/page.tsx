@@ -2,7 +2,6 @@
 import PasswordSettings from "./password-settings";
 import { visibleQuestions } from "../branching";
 import { useEffect, useState } from "react";
-import { flushSync } from "react-dom";
 import Brand from "../brand";
 import { apiJson, ApiError } from "../api-client";
 import { Survey, Entry } from "../survey-model";
@@ -10,6 +9,16 @@ import Editor, { newQuestion } from "./editor";
 import Report, { percent } from "./report";
 import { answerText } from "../question-input";
 import { exportResults } from "../exports";
+import Share from "./share";
+import FunnelPanel from "./funnel-panel";
+import Comparison from "./comparison";
+import SystemSettings from "./system-settings";
+import type { SurveyEvent } from "../funnel";
+import type { AdminIdentity } from "../security";
+import { builtInTemplates, templateSurvey } from "../templates";
+import { legacySurvey } from "../survey-model";
+import { downloadPdf } from "../pdf-report";
+import { isSurveyOpen } from "../../scripts/survey-features.mjs";
 type Listed = Survey & { total: number; completed: number };
 const statuses = {
   draft: "Неактивен · черновик",
@@ -23,6 +32,15 @@ const entryStatuses = {
 };
 export default function Results() {
   const [auth, setAuth] = useState(false),
+    [username, setUsername] = useState(""),
+    [identity, setIdentity] = useState<AdminIdentity | null>(null),
+    [events, setEvents] = useState<SurveyEvent[]>([]),
+    [templates, setTemplates] = useState<
+      { id: string; title: string; definition: Survey }[]
+    >([]),
+    [sourceFilter, setSourceFilter] = useState(""),
+    [departmentFilter, setDepartmentFilter] = useState(""),
+    [regionFilter, setRegionFilter] = useState(""),
     [checked, setChecked] = useState(false),
     [password, setPassword] = useState(""),
     [surveys, setSurveys] = useState<Listed[]>([]),
@@ -72,8 +90,14 @@ export default function Results() {
     }
   }
   async function load() {
-    const d = await request("/api/surveys");
+    const [d, login, library] = await Promise.all([
+      request("/api/surveys"),
+      request("/api/login"),
+      request("/api/templates"),
+    ]);
     setSurveys(d.surveys);
+    setIdentity(login.user);
+    setTemplates(library.templates);
   }
   async function check() {
     setBusy(true);
@@ -100,7 +124,7 @@ export default function Results() {
       await request("/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ password, username }),
       });
       setPassword("");
       setAuth(true);
@@ -125,6 +149,10 @@ export default function Results() {
       setCurrentSurvey(d.currentSurvey);
       setVersions(d.versions);
       setRows(d.rows);
+      setEvents(d.events || []);
+      setSourceFilter("");
+      setDepartmentFilter("");
+      setRegionFilter("");
       setView(tab);
       setParticipant(null);
       setFrom("");
@@ -146,6 +174,8 @@ export default function Results() {
             id: "",
             title: source.title + " · копия",
             status: "draft",
+            startsAt: undefined,
+            endsAt: undefined,
             revision: 0,
           }
         : {
@@ -173,9 +203,9 @@ export default function Results() {
       body: JSON.stringify({ survey: s, create: edit?.create }),
     });
     setEdit(null);
-    setNotice("Опрос сохранён");
     await load();
     await open(d.survey);
+    setNotice(`Опрос сохранён. Вопросов: ${d.survey.questions.length}.`);
   }
   async function changeStatus(s: Survey, status: Survey["status"]) {
     setBusy(true);
@@ -205,7 +235,12 @@ export default function Results() {
       setBusy(false);
     }
   }
+  const canWrite = !!identity && identity.role !== "viewer";
+  const canManage = identity && ["owner", "admin"].includes(identity.role);
   const dateMatch = (r: Entry) =>
+    (!sourceFilter || (r.source || "direct") === sourceFilter) &&
+    (!departmentFilter || r.department === departmentFilter) &&
+    (!regionFilter || r.region === regionFilter) &&
     (!from || r.updated.slice(0, 10) >= from) &&
     (!to || r.updated.slice(0, 10) <= to);
   const reportRows = rows.filter(
@@ -238,6 +273,29 @@ export default function Results() {
       <header className="admin-header no-print">
         <Brand subtitle="КАБИНЕТ ОРГАНИЗАТОРА" />
         <div className="header-links">
+          {auth && identity && (
+            <span className="small">
+              {identity.username} ·{" "}
+              {identity.role === "viewer"
+                ? "Просмотр"
+                : identity.role === "editor"
+                  ? "Редактор"
+                  : identity.role === "owner"
+                    ? "Владелец"
+                    : "Администратор"}
+            </span>
+          )}
+          {auth && canManage && (
+            <button
+              className="text-button"
+              onClick={() => {
+                setEdit(null);
+                setView("system");
+              }}
+            >
+              Доступ и резервные копии
+            </button>
+          )}
           {auth && (
             <button
               className="text-button"
@@ -287,6 +345,16 @@ export default function Results() {
             <h1>Голос команды</h1>
             <p>Управляйте опросами и превращайте обратную связь в решения.</p>
             <label className="label">
+              Логин
+              <input
+                autoComplete="username"
+                value={username}
+                maxLength={40}
+                placeholder="admin — владелец"
+                onChange={(e) => setUsername(e.target.value)}
+              />
+            </label>
+            <label className="label">
               Пароль
               <input
                 type="password"
@@ -300,6 +368,8 @@ export default function Results() {
               {busy ? "Проверяем…" : "Войти →"}
             </button>
           </form>
+        ) : view === "system" ? (
+          <SystemSettings onBack={reset} />
         ) : view === "security" ? (
           <PasswordSettings onBack={reset} />
         ) : edit ? (
@@ -320,20 +390,66 @@ export default function Results() {
                   Создавайте, собирайте, сравнивайте. История остаётся с вами.
                 </p>
               </div>
-              <button
-                className="primary"
-                disabled={busy}
-                onClick={() => create()}
-              >
-                ＋ Создать опрос
-              </button>
+              <div className="actions">
+                <select
+                  aria-label="Создать из шаблона"
+                  disabled={!canWrite || busy}
+                  value=""
+                  onChange={(e) => {
+                    const builtin = builtInTemplates.find(
+                      (t) => t.id === e.target.value,
+                    );
+                    const custom = templates.find(
+                      (t) => t.id === e.target.value,
+                    );
+                    if (builtin)
+                      setEdit({
+                        survey: templateSurvey(legacySurvey, builtin),
+                        create: true,
+                      });
+                    else if (custom)
+                      setEdit({
+                        survey: {
+                          ...structuredClone(custom.definition),
+                          id: "",
+                          status: "draft",
+                          revision: 0,
+                          startsAt: undefined,
+                          endsAt: undefined,
+                        },
+                        create: true,
+                      });
+                  }}
+                >
+                  <option value="">Создать из шаблона…</option>
+                  <optgroup label="Готовые">
+                    {builtInTemplates.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.title}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Мои шаблоны">
+                    {templates.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.title}
+                      </option>
+                    ))}
+                  </optgroup>
+                </select>
+                <button
+                  className="primary"
+                  disabled={busy || !canWrite}
+                  onClick={() => create()}
+                >
+                  ＋ Создать опрос
+                </button>
+              </div>
             </div>
             <div className="stats overview-stats">
               <div>
                 <span>Открытых опросов</span>
-                <strong>
-                  {surveys.filter((s) => s.status === "active").length}
-                </strong>
+                <strong>{surveys.filter((s) => isSurveyOpen(s)).length}</strong>
               </div>
               <div>
                 <span>Получено анкет</span>
@@ -383,6 +499,19 @@ export default function Results() {
                   </div>
                   <h2>{s.title}</h2>
                   <p>{s.description}</p>
+                  {(s.startsAt || s.endsAt) && (
+                    <p className="small">
+                      {s.startsAt
+                        ? "С " + new Date(s.startsAt).toLocaleString("ru-RU")
+                        : ""}{" "}
+                      {s.endsAt
+                        ? "до " + new Date(s.endsAt).toLocaleString("ru-RU")
+                        : ""}
+                      {s.status === "active" && !isSurveyOpen(s)
+                        ? " · Вне периода публикации"
+                        : ""}
+                    </p>
+                  )}
                   <div className="card-numbers">
                     <div>
                       <strong>{s.completed || 0}</strong>
@@ -420,7 +549,10 @@ export default function Results() {
                     >
                       Редактировать
                     </button>
-                    <button disabled={busy} onClick={() => create(s)}>
+                    <button
+                      disabled={busy || !canWrite}
+                      onClick={() => create(s)}
+                    >
                       Копия
                     </button>
                   </div>
@@ -612,7 +744,63 @@ export default function Results() {
                 </button>
               </div>
               <div className="report-controls no-print">
+                <Share survey={currentSurvey || selected} />
+                {canWrite && (
+                  <button
+                    className="text-button"
+                    onClick={() =>
+                      void request("/api/templates", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          survey: currentSurvey || selected,
+                        }),
+                      })
+                        .then(() => load())
+                        .then(() => setNotice("Шаблон добавлен в библиотеку"))
+                        .catch((e) => setError(e.message))
+                    }
+                  >
+                    Сохранить опрос как шаблон
+                  </button>
+                )}
                 <div className="date-filters">
+                  {(["source", "department", "region"] as const).map(
+                    (key, i) => (
+                      <label key={key}>
+                        {["Источник", "Отдел", "Регион"][i]}
+                        <select
+                          value={
+                            [sourceFilter, departmentFilter, regionFilter][i]
+                          }
+                          onChange={(e) =>
+                            [
+                              setSourceFilter,
+                              setDepartmentFilter,
+                              setRegionFilter,
+                            ][i](e.target.value)
+                          }
+                        >
+                          <option value="">Все</option>
+                          {[
+                            ...new Set(
+                              rows
+                                .map((r) =>
+                                  key === "source"
+                                    ? r.source || "direct"
+                                    : r[key],
+                                )
+                                .filter(Boolean),
+                            ),
+                          ].map((v) => (
+                            <option key={v} value={v}>
+                              {v}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ),
+                  )}
                   <label>
                     С даты (UTC)
                     <input
@@ -654,27 +842,17 @@ export default function Results() {
                     <option value="csv">CSV · ответы</option>
                     <option value="summary">CSV · сводка</option>
                     <option value="json">JSON · опрос и ответы</option>
-                    <option value="pdf">PDF · печатный отчёт</option>
+                    <option value="pdf">PDF · отчёт с диаграммами</option>
                   </select>
                   <button
                     className="primary"
                     onClick={() => {
                       if (format === "pdf") {
-                        flushSync(() => setView("report"));
-                        requestAnimationFrame(() => {
-                          const images = Array.from(
-                            document.querySelectorAll<HTMLImageElement>(
-                              ".report img",
-                            ),
-                          );
-                          for (const img of images) img.loading = "eager";
-                          void Promise.race([
-                            Promise.allSettled(
-                              images.map((img) => img.decode()),
-                            ),
-                            new Promise((resolve) => setTimeout(resolve, 5000)),
-                          ]).then(() => window.print());
-                        });
+                        void downloadPdf(
+                          selected,
+                          reportRows,
+                          `Даты UTC: ${from || "начало"} — ${to || "сегодня"}; источник: ${sourceFilter || "все"}; отдел: ${departmentFilter || "все"}; регион: ${regionFilter || "все"}; ${drafts ? "с черновиками" : "только отправленные"}`,
+                        ).catch((e) => setError(e.message));
                       } else
                         void exportResults(
                           format,
@@ -700,12 +878,25 @@ export default function Results() {
                     : "Все статусы согласно фильтрам ниже."}{" "}
                   Выгрузки учитывают выбранные фильтры.
                   {format === "pdf"
-                    ? " PDF использует даты и настройку черновиков отчёта. В окне печати выберите «Сохранить как PDF»."
+                    ? " PDF скачивается файлом и использует фильтры отчёта."
                     : ""}
                 </p>
               </div>
               {view === "report" ? (
-                <Report survey={selected} rows={reportRows} />
+                <>
+                  <FunnelPanel
+                    survey={selected}
+                    rows={rows.filter(dateMatch)}
+                    events={events}
+                  />
+                  <Comparison
+                    key={selected.id + "-" + selected.schemaVersion}
+                    survey={selected}
+                    rows={rows}
+                    surveys={surveys}
+                  />
+                  <Report survey={selected} rows={reportRows} />
+                </>
               ) : (
                 <>
                   <div className="toolbar no-print">

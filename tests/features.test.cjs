@@ -756,6 +756,51 @@ test("Welcome block stores custom text and images without changing question vers
   assert.equal((await imageGet(asset.src.split("/").pop(), true)).status, 200);
 });
 
+test("Page grouping persists through the API and JSON import and creates a new version without changing old definitions", async () => {
+  cookie = "survey_admin=" + security.createAdminSession();
+  const original = await create([q("one", "First"), q("two", "Second")]);
+  const response = await surveys.POST(
+    req(
+      "/api/surveys",
+      {
+        survey: {
+          ...original,
+          questions: original.questions.map((q, i) => ({
+            ...q,
+            startNewPage: i === 0,
+          })),
+        },
+      },
+      true,
+    ),
+  );
+  assert.equal(response.status, 200);
+  const saved = (await response.json()).survey;
+  assert.equal(saved.schemaVersion, 2);
+  assert.equal(saved.questions[1].startNewPage, false);
+  assert.equal(
+    dbModule.getSurveyVersion(saved.id, 1).questions[1].startNewPage,
+    undefined,
+  );
+  const publicSurvey = await surveys.GET(
+    req("/api/surveys?public=1&id=" + saved.id),
+  );
+  assert.equal(
+    (await publicSurvey.json()).survey.questions[1].startNewPage,
+    false,
+  );
+  const file = join(directory, "pages-import.json");
+  const copy = { ...saved, id: crypto.randomUUID() };
+  writeFileSync(file, JSON.stringify({ version: 2, survey: copy, rows: [] }));
+  const imported = spawnSync(
+    process.execPath,
+    ["scripts/import-responses.mjs", file],
+    { encoding: "utf8" },
+  );
+  assert.equal(imported.status, 0, imported.stderr);
+  assert.equal(dbModule.getSurvey(copy.id).questions[1].startNewPage, false);
+});
+
 test("Environment password recovery revokes admins and keeps signed visitor sessions", async () => {
   const visitor = await security.signSession(crypto.randomUUID(), "legacy"),
     old = cookie;

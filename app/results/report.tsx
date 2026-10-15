@@ -7,6 +7,8 @@ import {
   matrixStats,
   dailyCounts,
   answered,
+  numericSummary,
+  rankingStats,
 } from "../statistics";
 import { answerText, QuestionImage } from "../question-input";
 export const colors = [
@@ -109,6 +111,30 @@ export default function Report({
                 <div className="empty-state">
                   Пока нет ответов на этот вопрос.
                 </div>
+              ) : q.type === "ranking" ? (
+                <div className="table-scroll">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Вариант</th>
+                        <th>Среднее место</th>
+                        <th>Ответов</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rankingStats(q, base).map((r) => (
+                        <tr key={r.label}>
+                          <td>{r.label}</td>
+                          <td>{r.average.toFixed(2)}</td>
+                          <td>{r.total}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p className="small">
+                    Меньшее среднее место означает более высокий приоритет.
+                  </p>
+                </div>
               ) : q.type === "text" ? (
                 <div className="text-responses">
                   {base.map((r, index) => (
@@ -208,6 +234,13 @@ export default function Report({
               ) : (
                 <>
                   <div className="leader-callout">
+                    {["rating", "stars", "nps"].includes(q.type) && (
+                      <strong>
+                        {q.type === "nps"
+                          ? `NPS: ${numericSummary(q, base).nps.toFixed(1)}`
+                          : `Средняя оценка: ${numericSummary(q, base).average.toFixed(2)}`}
+                      </strong>
+                    )}
                     <span>Самый частый ответ</span>
                     <strong>{top?.label}</strong>
                     <b>{percent(top?.percent || 0)}</b>

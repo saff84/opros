@@ -27,7 +27,10 @@ const environment = {
   DOMAIN: "survey.example.test",
 };
 const override = join(directory, "compose.override.json");
-writeFileSync(override, JSON.stringify({ services: { app: { image } } }));
+writeFileSync(
+  override,
+  JSON.stringify({ services: { app: { image }, backup: { image } } }),
+);
 const base = [
   "compose",
   "--env-file",
@@ -93,6 +96,7 @@ async function up() {
     "--wait-timeout",
     "120",
     "app",
+    "backup",
   ]);
 }
 async function verifyPersistence(fixture) {
@@ -114,6 +118,7 @@ async function verifyPersistence(fixture) {
   assert.equal(data.rows.length, 1);
   assert.deepEqual(data.rows[0].answers, { gate: "No" });
   assert.equal(data.survey.welcome.heading, "Docker welcome");
+  assert.equal(data.survey.questions[1].startNewPage, false);
   assert.equal(data.survey.welcome.images[0].src, fixture.imagePath);
   assert.equal(
     (await request(fixture.imagePath, undefined, cookie)).status,
@@ -199,7 +204,7 @@ try {
     "scripts/backup.mjs",
     "/data/check-backup.sqlite",
   ]);
-  await docker([...compose, "stop", "app"]);
+  await docker([...compose, "stop", "app", "backup"]);
   await docker([
     ...compose,
     "run",

@@ -9,7 +9,14 @@ import {
   secureCookie,
   rateLimit,
   readBody,
+  adminIdentity,
 } from "../../security";
+import { loginTeam, passwordRecord, checkTeamPassword } from "../../team";
+import { getDatabase } from "../../runtime";
+export async function GET(req: Request) {
+  const user = await adminIdentity(req);
+  return user ? json({ user }) : json({ error: "Требуется вход" }, 401);
+}
 export async function POST(req: Request) {
   if (!originOK(req)) return json({ error: "Запрос отклонён" }, 403);
   if (!rateLimit("admin-login", 30, 15 * 60_000))
@@ -24,10 +31,20 @@ export async function POST(req: Request) {
   } catch {
     return json({ error: "Некорректный запрос" }, 400);
   }
-  if (!passwordOK(body?.password))
+  let teamToken: string | null = null;
+  const username =
+    typeof body?.username === "string"
+      ? body.username.trim().toLowerCase()
+      : "";
+  if (username && username !== "admin")
+    teamToken = loginTeam(username, body?.password);
+  if (
+    !teamToken &&
+    ((username && username !== "admin") || !passwordOK(body?.password))
+  )
     return json({ error: "Неверный пароль" }, 401);
   revokeAdmin(req);
-  const token = createAdminSession();
+  const token = teamToken || createAdminSession();
   return json({ ok: true }, 200, {
     "Set-Cookie": `survey_admin=${token}; Path=/; HttpOnly${secureCookie()}; SameSite=Strict; Max-Age=28800`,
   });
@@ -62,6 +79,25 @@ export async function PATCH(req: Request) {
     );
   if (body.newPassword === body.currentPassword)
     return json({ error: "Новый пароль должен отличаться от текущего" }, 400);
+  const identity = await adminIdentity(req);
+  if (identity && identity.id !== "owner") {
+    const user = getDatabase()
+      .prepare("SELECT * FROM team_users WHERE id=?")
+      .get(identity.id) as any;
+    if (!user || !checkTeamPassword(user, body.currentPassword))
+      return json({ error: "Текущий пароль неверен" }, 400);
+    const record = passwordRecord(body.newPassword);
+    getDatabase()
+      .prepare("UPDATE team_users SET salt=?,password_hash=? WHERE id=?")
+      .run(record.salt, record.hash, identity.id);
+    getDatabase()
+      .prepare("DELETE FROM team_sessions WHERE user_id=?")
+      .run(identity.id);
+    const token = loginTeam(identity.username, body.newPassword)!;
+    return json({ ok: true }, 200, {
+      "Set-Cookie": `survey_admin=${token}; Path=/; HttpOnly${secureCookie()}; SameSite=Strict; Max-Age=28800`,
+    });
+  }
   if (!changePassword(body.currentPassword, body.newPassword))
     return json({ error: "Текущий пароль неверен" }, 400);
   const token = createAdminSession();

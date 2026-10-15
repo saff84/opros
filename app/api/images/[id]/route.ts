@@ -1,6 +1,7 @@
 ﻿import { getDatabase } from "../../../runtime";
 import { isAdmin, json } from "../../../security";
 import { surveyImageSources } from "../../../../scripts/welcome.mjs";
+import { isSurveyOpen } from "../../../../scripts/survey-features.mjs";
 export async function GET(
   req: Request,
   context: { params: Promise<{ id: string }> },
@@ -21,7 +22,7 @@ export async function GET(
       }[]
     ).some((r) => {
       const s = JSON.parse(r.definition);
-      return s.status === "active" && surveyImageSources(s).includes(src);
+      return isSurveyOpen(s) && surveyImageSources(s).includes(src);
     });
     if (!referenced) return json({ error: "Картинка не найдена" }, 404);
   }

@@ -1,6 +1,7 @@
 ﻿"use client";
 import { Answer, AnswerMap, Question, Survey } from "./survey-model";
 import { CSSProperties } from "react";
+import { singleTypes, otherKey } from "../scripts/survey-features.mjs";
 export function theme(s: Survey): CSSProperties {
   return {
     "--cyan": s.accent,
@@ -79,10 +80,73 @@ function AnswerInput({
       </div>
     );
   }
+  if (q.type === "ranking")
+    return (
+      <div className="ranking-input">
+        <p className="small">
+          Нажимайте варианты в порядке приоритета: первый — самый важный.
+          Порядок можно изменить стрелками.
+        </p>
+        <ol>
+          {chosen.map((option, i) => (
+            <li key={option}>
+              <span>{option}</span>
+              <button
+                type="button"
+                disabled={disabled || i === 0}
+                aria-label={"Поднять " + option}
+                onClick={() => {
+                  const values = [...chosen];
+                  [values[i - 1], values[i]] = [values[i], values[i - 1]];
+                  onChange(values);
+                }}
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                disabled={disabled || i === chosen.length - 1}
+                aria-label={"Опустить " + option}
+                onClick={() => {
+                  const values = [...chosen];
+                  [values[i + 1], values[i]] = [values[i], values[i + 1]];
+                  onChange(values);
+                }}
+              >
+                ↓
+              </button>
+              <button
+                type="button"
+                disabled={disabled}
+                aria-label={"Убрать " + option}
+                onClick={() => onChange(chosen.filter((v) => v !== option))}
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ol>
+        <div className="options">
+          {q.options
+            .filter((v) => !chosen.includes(v))
+            .map((v) => (
+              <button
+                type="button"
+                className="option"
+                disabled={disabled}
+                key={v}
+                onClick={() => onChange([...chosen, v])}
+              >
+                ＋ {v}
+              </button>
+            ))}
+        </div>
+      </div>
+    );
   return (
     <>
       <p className="small">
-        {q.type === "single"
+        {singleTypes.includes(q.type)
           ? "Один вариант ответа"
           : q.minChoices && q.minChoices === q.maxChoices
             ? `Выберите ровно ${q.maxChoices} вариантов`
@@ -100,10 +164,16 @@ function AnswerInput({
             " Исключающий вариант можно выбрать отдельно."}
         </p>
       )}
-      <div className="options">
+      <div
+        className={
+          "options " +
+          (["rating", "stars", "nps"].includes(q.type) ? "scale-options" : "")
+        }
+      >
         {q.options.map((o) => {
-          const selected =
-            q.type === "single" ? value === o : chosen.includes(o);
+          const selected = singleTypes.includes(q.type)
+            ? value === o
+            : chosen.includes(o);
           return (
             <button
               type="button"
@@ -117,11 +187,20 @@ function AnswerInput({
               className={"option " + (selected ? "selected" : "")}
               aria-pressed={selected}
               onClick={() =>
-                q.type === "single" ? onChange(value === o ? "" : o) : toggle(o)
+                singleTypes.includes(q.type)
+                  ? onChange(value === o ? "" : o)
+                  : toggle(o)
               }
             >
               <span className="check">{selected ? "✓" : "+"}</span>
-              {o}
+              {q.type === "image" && q.optionImages?.[o] && (
+                <img
+                  className="choice-image"
+                  src={q.optionImages[o].src}
+                  alt={q.optionImages[o].alt}
+                />
+              )}
+              {q.type === "stars" ? `${o} ${"★".repeat(Number(o))}` : o}
             </button>
           );
         })}
@@ -138,7 +217,16 @@ export function answerText(q: Question, a: AnswerMap) {
           `${row}: ${q.options[(v as Record<string, number>)?.[row]] ?? "—"}`,
       )
       .join("\n");
-  return Array.isArray(v) ? v.join("; ") : typeof v === "string" ? v : "—";
+  const base = Array.isArray(v)
+    ? v
+        .map((item, i) => (q.type === "ranking" ? `${i + 1}. ${item}` : item))
+        .join("; ")
+    : typeof v === "string"
+      ? v
+      : "—";
+  return q.otherOption && a[otherKey(q.id)]
+    ? base + " — " + String(a[otherKey(q.id)])
+    : base;
 }
 
 export function QuestionImage({ question }: { question: Question }) {
@@ -154,11 +242,28 @@ export function QuestionInput(props: {
   value: Answer | undefined;
   onChange: (v: Answer) => void;
   disabled?: boolean;
+  otherValue?: string;
+  onOtherChange?: (value: string) => void;
 }) {
   return (
     <>
       <QuestionImage question={props.question} />
       <AnswerInput {...props} />
+      {props.question.otherOption &&
+        (Array.isArray(props.value)
+          ? props.value.includes(props.question.otherOption)
+          : props.value === props.question.otherOption) && (
+          <label className="label">
+            Уточните «{props.question.otherOption}»
+            <textarea
+              value={props.otherValue || ""}
+              disabled={props.disabled}
+              maxLength={3000}
+              placeholder="Напишите свой вариант…"
+              onChange={(e) => props.onOtherChange?.(e.target.value)}
+            />
+          </label>
+        )}
     </>
   );
 }

@@ -2117,6 +2117,129 @@ input[type="color"] {
 .welcome-block h1 {
   font-size: clamp(24px, 4vw, var(--welcome-title-size, 46px));
 }
+.page-question + .page-question {
+  border-top: 1px solid var(--line);
+  padding-top: 24px;
+  margin-top: 32px;
+}
+.page-question {
+  min-width: 0;
+}
+.preview-page {
+  border: 1px dashed var(--line);
+  padding: 16px;
+  border-radius: 12px;
+  margin-top: 24px;
+}
+.preview-page > h3 {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0;
+}
+.scale-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.scale-options .option {
+  width: auto;
+  min-width: 48px;
+  flex: 1;
+  justify-content: center;
+  padding: 12px 8px;
+}
+.scale-options .check {
+  display: none;
+}
+.choice-image {
+  width: 100px;
+  height: 80px;
+  object-fit: contain;
+  border-radius: 8px;
+}
+.ranking-input li {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.ranking-input li > span {
+  flex: 1;
+}
+.ranking-input li button {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: #fff;
+}
+.preview-mobile {
+  width: 390px;
+  max-width: 100%;
+  margin: 16px auto;
+  border: 8px solid #23343b;
+  border-radius: 28px;
+  overflow: hidden;
+}
+.preview-mobile .preview-page,
+.preview-mobile .summary-card {
+  padding: 12px;
+}
+.preview-mobile .preview-page h2 {
+  font-size: 23px;
+}
+.preview-mobile .option {
+  font-size: 13px;
+  padding: 12px;
+}
+.preview-mobile .form-grid {
+  grid-template-columns: 1fr;
+}
+.preview-mobile .welcome-block {
+  padding: 24px 16px;
+}
+.preview-mobile .welcome-block h1 {
+  font-size: min(var(--welcome-title-size), 32px);
+}
+.share-panel {
+  flex-basis: 100%;
+  width: 100%;
+}
+.share-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 200px;
+  gap: 24px;
+  align-items: center;
+}
+.qr-preview {
+  width: 200px;
+  max-width: 100%;
+}
+.funnel-stages {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+}
+.funnel-stages strong {
+  display: block;
+  font-size: 32px;
+  margin: 8px 0;
+}
+.participant-context {
+  margin: 20px 0;
+}
+.participant-context summary {
+  cursor: pointer;
+}
+@media (max-width: 760px) {
+  .share-grid,
+  .funnel-stages {
+    grid-template-columns: 1fr;
+  }
+  .preview-mobile {
+    width: 100%;
+  }
+}
 .welcome-block > p,
 .welcome-block .aside-bottom {
   color: inherit;

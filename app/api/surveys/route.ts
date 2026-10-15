@@ -1,7 +1,8 @@
 ﻿import { getDatabase, getSurvey } from "../../runtime";
-import { isAdmin, json, originOK, readBody } from "../../security";
+import { isAdmin, canEdit, json, originOK, readBody } from "../../security";
 import { Survey, validateSurvey } from "../../survey-model";
 import { surveyImageSources } from "../../../scripts/welcome.mjs";
+import { isSurveyOpen } from "../../../scripts/survey-features.mjs";
 export async function GET(req: Request) {
   const db = getDatabase(),
     admin =
@@ -10,7 +11,7 @@ export async function GET(req: Request) {
   const id = new URL(req.url).searchParams.get("id");
   if (id) {
     const s = getSurvey(id);
-    return s && (admin || s.status === "active")
+    return s && (admin || isSurveyOpen(s))
       ? json({ survey: s })
       : json({ error: "Опрос не найден или закрыт" }, 404);
   }
@@ -20,7 +21,7 @@ export async function GET(req: Request) {
       .all() as any[]
   )
     .map((r) => JSON.parse(r.definition) as Survey)
-    .filter((s) => admin || s.status === "active");
+    .filter((s) => admin || isSurveyOpen(s));
   return json({
     surveys: surveys.map((s) =>
       admin
@@ -44,6 +45,8 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   if (!originOK(req)) return json({ error: "Запрос отклонён" }, 403);
   if (!(await isAdmin(req))) return json({ error: "Требуется вход" }, 401);
+  if (!(await canEdit(req)))
+    return json({ error: "У вас доступ только к просмотру" }, 403);
   let body;
   try {
     body = await readBody(req);
@@ -105,6 +108,8 @@ export async function POST(req: Request) {
       background: input.background,
       status: input.status,
       questions: input.questions,
+      ...(input.startsAt ? { startsAt: input.startsAt } : {}),
+      ...(input.endsAt ? { endsAt: input.endsAt } : {}),
       ...(input.welcome ? { welcome: input.welcome } : {}),
       schemaVersion: current
         ? (current.schemaVersion || 1) + (structureChanged ? 1 : 0)

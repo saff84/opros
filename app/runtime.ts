@@ -19,6 +19,11 @@ export function getDatabase() {
  CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY,value TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS images (id TEXT PRIMARY KEY,mime TEXT NOT NULL,data BLOB NOT NULL,created TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS migrations (name TEXT PRIMARY KEY);`);
+  db.exec(`CREATE TABLE IF NOT EXISTS entry_context (entry_id TEXT PRIMARY KEY REFERENCES entries(id),source TEXT NOT NULL DEFAULT 'direct',campaign TEXT NOT NULL DEFAULT '',department TEXT NOT NULL DEFAULT '',region TEXT NOT NULL DEFAULT '');
+  CREATE TABLE IF NOT EXISTS entry_events (entry_id TEXT NOT NULL REFERENCES entries(id),schema_version INTEGER NOT NULL,event TEXT NOT NULL,page_id TEXT NOT NULL DEFAULT '',occurred TEXT NOT NULL,PRIMARY KEY(entry_id,schema_version,event,page_id));
+  CREATE TABLE IF NOT EXISTS team_users (id TEXT PRIMARY KEY,username TEXT UNIQUE NOT NULL,salt TEXT NOT NULL,password_hash TEXT NOT NULL,role TEXT NOT NULL,active INTEGER NOT NULL DEFAULT 1);
+  CREATE TABLE IF NOT EXISTS team_sessions (token_hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES team_users(id),expires INTEGER NOT NULL);
+  CREATE TABLE IF NOT EXISTS survey_templates (id TEXT PRIMARY KEY,title TEXT NOT NULL,definition TEXT NOT NULL);`);
   db.exec(
     "CREATE TABLE IF NOT EXISTS survey_versions (survey_id TEXT NOT NULL REFERENCES surveys(id), version INTEGER NOT NULL, definition TEXT NOT NULL, PRIMARY KEY(survey_id,version))",
   );
@@ -113,7 +118,7 @@ export function getEntries(id: string, version?: number): Entry[] {
   return (
     getDatabase()
       .prepare(
-        "SELECT * FROM entries WHERE survey_id=?" +
+        "SELECT e.*,c.source,c.campaign,c.department,c.region FROM entries e LEFT JOIN entry_context c ON c.entry_id=e.id WHERE e.survey_id=?" +
           (version === undefined ? "" : " AND schema_version=?") +
           " ORDER BY updated DESC",
       )

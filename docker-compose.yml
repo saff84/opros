@@ -18,5 +18,27 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+  backup:
+    image: sanext-survey:local
+    pull_policy: never
+    restart: unless-stopped
+    init: true
+    command: ["node", "scripts/backup-worker.mjs"]
+    healthcheck:
+      disable: true
+    healthcheck:
+      disable: true
+    environment:
+      DATABASE_PATH: /data/survey.sqlite
+    volumes:
+      - survey_data:/data
+    depends_on:
+      app:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
 volumes:
   survey_data:

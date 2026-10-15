@@ -73,6 +73,9 @@ export function surveyImageSources(survey) {
   return [
     ...new Set([
       ...survey.questions.flatMap((q) => (q.image ? [q.image.src] : [])),
+      ...survey.questions.flatMap((q) =>
+        Object.values(q.optionImages || {}).map((image) => image.src),
+      ),
       ...(survey.welcome?.images || []).map((image) => image.src),
     ]),
   ];

@@ -47,26 +47,54 @@ export function createAdminSession() {
   return token;
 }
 export async function isAdmin(req: Request) {
+  return !!(await adminIdentity(req));
+}
+export type AdminIdentity = {
+  id: string;
+  username: string;
+  role: "owner" | "admin" | "editor" | "viewer";
+};
+export async function adminIdentity(
+  req: Request,
+): Promise<AdminIdentity | null> {
   const token =
     cookie(req, "survey_admin") ||
     req.headers.get("authorization")?.replace(/^Bearer /, "");
-  return (
-    !!token &&
-    /^[a-f0-9]{64}$/.test(token) &&
-    !!getDatabase()
+  if (!token || !/^[a-f0-9]{64}$/.test(token)) return null;
+  if (
+    getDatabase()
       .prepare("SELECT 1 FROM admin_sessions WHERE token_hash=? AND expires>?")
       .get(tokenHash(token), Date.now())
-  );
+  )
+    return { id: "owner", username: "admin", role: "owner" };
+  const user = getDatabase()
+    .prepare(
+      "SELECT u.id,u.username,u.role FROM team_sessions s JOIN team_users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires>? AND u.active=1",
+    )
+    .get(tokenHash(token), Date.now());
+  return user ? (user as AdminIdentity) : null;
+}
+export async function canEdit(req: Request) {
+  const u = await adminIdentity(req);
+  return !!u && u.role !== "viewer";
+}
+export async function canManage(req: Request) {
+  const u = await adminIdentity(req);
+  return !!u && ["owner", "admin"].includes(u.role);
 }
 export function revokeAdmin(req: Request) {
   for (const token of [
     cookie(req, "survey_admin"),
     req.headers.get("authorization")?.replace(/^Bearer /, ""),
   ])
-    if (token)
+    if (token) {
       getDatabase()
         .prepare("DELETE FROM admin_sessions WHERE token_hash=?")
         .run(tokenHash(token));
+      getDatabase()
+        .prepare("DELETE FROM team_sessions WHERE token_hash=?")
+        .run(tokenHash(token));
+    }
 }
 export function rateLimit(key: string, max: number, windowMs: number) {
   const db = getDatabase(),

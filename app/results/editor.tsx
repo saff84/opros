@@ -1,5 +1,5 @@
 ﻿"use client";
-import { visibleQuestions, branchingError } from "../branching";
+import { branchingError } from "../branching";
 import { useState } from "react";
 import {
   Survey,
@@ -10,6 +10,18 @@ import {
 import { QuestionInput, theme } from "../question-input";
 import WelcomeEditor from "./welcome-editor";
 import { WelcomeBlock } from "../welcome-block";
+import { groupQuestionPages, visiblePages } from "../survey-pages";
+import { publicationCheck } from "../publication";
+import { pageAnswerError } from "../survey-pages";
+import { otherKey } from "../../scripts/survey-features.mjs";
+import ExtendedQuestion from "./extended-question";
+function localDate(value?: string) {
+  if (!value) return "";
+  const d = new Date(value);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+    .toISOString()
+    .slice(0, 16);
+}
 export function newQuestion(): Question {
   return {
     id:
@@ -38,6 +50,8 @@ export default function Editor({
 }) {
   const [s, setS] = useState<Survey>(() => structuredClone(initial)),
     [tab, setTab] = useState("content"),
+    [device, setDevice] = useState("desktop"),
+    [previewStep, setPreviewStep] = useState(0),
     [busy, setBusy] = useState(false),
     [uploading, setUploading] = useState<string | null>(null),
     [error, setError] = useState(""),
@@ -52,6 +66,18 @@ export default function Editor({
       questions: s.questions.map((q, j) => (j === i ? { ...q, ...patch } : q)),
     });
   const dirty = JSON.stringify(s) !== JSON.stringify(initial);
+  const pageGroups = groupQuestionPages(s.questions);
+  const preflight = publicationCheck(s);
+  const previewPages = visiblePages(s, previewAnswers);
+  const previewIndex = Math.min(
+    previewStep,
+    Math.max(0, previewPages.length - 1),
+  );
+  const pageNumbers = new Map(
+    pageGroups.flatMap((page, i) =>
+      page.questions.map((q) => [q.id, i + 1] as const),
+    ),
+  );
   function removeQuestion(id: string) {
     const index = s.questions.findIndex((q) => q.id === id);
     if (busy || s.questions.length <= 1 || index < 0) return;
@@ -139,7 +165,7 @@ export default function Editor({
           <span className="eyebrow">КОНСТРУКТОР ОПРОСА</span>
           <h2>{s.title || "Новый опрос"}</h2>
           <p className="editor-save-state">
-            Вопросов: {s.questions.length} ·{" "}
+            Вопросов: {s.questions.length} · Страниц: {pageGroups.length} ·{" "}
             {dirty ? "Есть несохранённые изменения" : "Изменений нет"}
           </p>
         </div>
@@ -186,6 +212,13 @@ export default function Editor({
         )}
       </div>
       <div className="view-tabs">
+        <button
+          className={tab === "check" ? "active" : ""}
+          onClick={() => setTab("check")}
+        >
+          Проверка перед публикацией{" "}
+          {preflight.errors.length ? `· ${preflight.errors.length}` : "✓"}
+        </button>
         <button
           className={tab === "welcome" ? "active" : ""}
           onClick={() => setTab("welcome")}
@@ -250,6 +283,44 @@ export default function Editor({
                 onChange={(e) => update({ description: e.target.value })}
               />
             </label>
+            <details className="question-config">
+              <summary>Расписание публикации</summary>
+              <p className="small">
+                Опрос должен иметь статус «Активен». Вне указанных дат он скрыт
+                и не принимает ответы. Время вводится в часовом поясе вашего
+                браузера.
+              </p>
+              <div className="form-grid">
+                <label className="label">
+                  Открыть с
+                  <input
+                    type="datetime-local"
+                    value={localDate(s.startsAt)}
+                    onChange={(e) =>
+                      update({
+                        startsAt: e.target.value
+                          ? new Date(e.target.value).toISOString()
+                          : undefined,
+                      })
+                    }
+                  />
+                </label>
+                <label className="label">
+                  Закрыть после
+                  <input
+                    type="datetime-local"
+                    value={localDate(s.endsAt)}
+                    onChange={(e) =>
+                      update({
+                        endsAt: e.target.value
+                          ? new Date(e.target.value).toISOString()
+                          : undefined,
+                      })
+                    }
+                  />
+                </label>
+              </div>
+            </details>
             <label className="label">
               Вступление
               <textarea
@@ -280,6 +351,8 @@ export default function Editor({
               <div className="question-head">
                 <span className="eyebrow">
                   ВОПРОС {String(i + 1).padStart(2, "0")}
+                  {" · СТРАНИЦА "}
+                  {pageNumbers.get(q.id)}
                 </span>
                 <div className="actions">
                   <button
@@ -319,7 +392,27 @@ export default function Editor({
                   </button>
                 </div>
               </div>
-              <fieldset disabled={busy}>
+              <fieldset disabled={busy || uploading === q.id}>
+                <label className="label">
+                  Страница опроса
+                  <span>
+                    {i === 0
+                      ? "Первый вопрос начинает первую страницу."
+                      : "Объедините вопрос с предыдущим, чтобы участник отвечал на них вместе. У каждого вопроса сохраняются свои тип ответа, обязательность и условия показа."}
+                  </span>
+                  <select
+                    disabled={i === 0}
+                    value={i === 0 || q.startNewPage !== false ? "new" : "same"}
+                    onChange={(e) =>
+                      question(i, { startNewPage: e.target.value === "new" })
+                    }
+                  >
+                    <option value="new">Начать новую страницу</option>
+                    <option value="same">
+                      На одной странице с предыдущим вопросом
+                    </option>
+                  </select>
+                </label>
                 <label className="label">
                   Формулировка
                   <span>Текст вопроса, который увидит участник.</span>
@@ -341,6 +434,29 @@ export default function Editor({
                       onChange={(e) =>
                         question(i, {
                           type: e.target.value as Question["type"],
+                          otherOption: undefined,
+                          optionImages: undefined,
+                          ...(["rating", "stars", "nps"].includes(
+                            e.target.value,
+                          )
+                            ? {
+                                options: Array.from(
+                                  {
+                                    length:
+                                      e.target.value === "nps"
+                                        ? 11
+                                        : e.target.value === "stars"
+                                          ? 5
+                                          : 10,
+                                  },
+                                  (_, i) =>
+                                    String(
+                                      e.target.value === "nps" ? i : i + 1,
+                                    ),
+                                ),
+                                exclusive: [],
+                              }
+                            : {}),
                           rows:
                             e.target.value === "matrix" && !q.rows.length
                               ? ["Строка 1", "Строка 2"]
@@ -352,6 +468,11 @@ export default function Editor({
                       <option value="multiple">Несколько вариантов</option>
                       <option value="text">Свободный текст</option>
                       <option value="matrix">Матрица оценок</option>
+                      <option value="rating">Шкала от 1 до 10</option>
+                      <option value="stars">Звёзды от 1 до 5</option>
+                      <option value="nps">NPS от 0 до 10</option>
+                      <option value="ranking">Ранжирование по важности</option>
+                      <option value="image">Выбор изображения</option>
                     </select>
                   </label>
                   <label className="label">
@@ -391,6 +512,7 @@ export default function Editor({
                         : "Каждая строка станет отдельной кнопкой выбора. Не повторяйте одинаковые варианты."}
                     </span>
                     <textarea
+                      readOnly={["rating", "stars", "nps"].includes(q.type)}
                       value={q.options.join("\n")}
                       onChange={(e) =>
                         question(i, { options: e.target.value.split("\n") })
@@ -479,6 +601,13 @@ export default function Editor({
                   </>
                 )}
                 <div className="question-extras">
+                  <ExtendedQuestion
+                    question={q}
+                    disabled={!!uploading}
+                    onChange={(patch) => question(i, patch)}
+                    onBusy={(value) => setUploading(value ? q.id : null)}
+                    onError={setError}
+                  />
                   <details
                     className="question-config"
                     open={q.image ? true : undefined}
@@ -775,6 +904,37 @@ export default function Editor({
             ＋ Добавить вопрос
           </button>
         </>
+      ) : tab === "check" ? (
+        <section className="summary-card">
+          <h3>Проверка перед публикацией</h3>
+          <p>
+            Ошибки нужно исправить. Предупреждения помогают проверить содержание
+            и доступность.
+          </p>
+          {!preflight.errors.length && (
+            <div className="notice">
+              Блокирующих ошибок нет. Проверьте опрос в предпросмотре на обоих
+              устройствах.
+            </div>
+          )}
+          {preflight.errors.map((message, i) => (
+            <div className="error" key={i}>
+              {message}
+            </div>
+          ))}
+          {preflight.warnings.map((message, i) => (
+            <div className="note" key={i}>
+              {message}
+            </div>
+          ))}
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => setTab("preview")}
+          >
+            Открыть предпросмотр
+          </button>
+        </section>
       ) : tab === "welcome" ? (
         <WelcomeEditor
           survey={s}
@@ -831,35 +991,100 @@ export default function Editor({
           </div>
         </div>
       ) : (
-        <div className="preview-frame" style={theme(s)}>
-          <div className="note">
-            Предпросмотр. Ответы здесь не сохраняются и не попадают в
-            статистику.
+        <div>
+          <div className="view-tabs">
+            <button
+              className={device === "desktop" ? "active" : ""}
+              onClick={() => setDevice("desktop")}
+            >
+              Компьютер
+            </button>
+            <button
+              className={device === "mobile" ? "active" : ""}
+              onClick={() => setDevice("mobile")}
+            >
+              Телефон · 390 px
+            </button>
           </div>
-          <div className="preview-intro">
-            <WelcomeBlock survey={s} />
-            <span className="eyebrow">ОПРОС SANEXT</span>
-            <h1>{s.title}</h1>
-            <p className="pre">{s.intro}</p>
+          <div className={"preview-frame preview-" + device} style={theme(s)}>
+            <div className="note">
+              Предпросмотр. Ответы здесь не сохраняются и не попадают в
+              статистику.
+            </div>
+            <div className="preview-intro">
+              <WelcomeBlock survey={s} />
+              <span className="eyebrow">ОПРОС SANEXT</span>
+              <h1>{s.title}</h1>
+              <p className="pre">{s.intro}</p>
+            </div>
+            {previewPages
+              .filter((_, i) => i === previewIndex)
+              .map((page) => (
+                <div className="preview-page" key={page.id}>
+                  <h3>
+                    Страница {previewIndex + 1} / {previewPages.length}
+                  </h3>
+                  {page.questions.map((q) => (
+                    <section className="summary-card" key={q.id}>
+                      <span className="eyebrow">
+                        ВОПРОС{" "}
+                        {s.questions.findIndex((item) => item.id === q.id) + 1}{" "}
+                        · {q.required ? "ОБЯЗАТЕЛЬНЫЙ" : "НЕОБЯЗАТЕЛЬНЫЙ"}
+                      </span>
+                      <h2>{q.title}</h2>
+                      <p>{q.description}</p>
+                      <QuestionInput
+                        otherValue={String(
+                          previewAnswers[otherKey(q.id)] || "",
+                        )}
+                        onOtherChange={(value) =>
+                          setPreviewAnswers((a) => ({
+                            ...a,
+                            [otherKey(q.id)]: value,
+                          }))
+                        }
+                        question={q}
+                        value={previewAnswers[q.id]}
+                        onChange={(v) =>
+                          setPreviewAnswers((a) => ({ ...a, [q.id]: v }))
+                        }
+                      />
+                    </section>
+                  ))}
+                </div>
+              ))}
+            <div className="navigation">
+              <button
+                className="secondary"
+                disabled={previewIndex === 0}
+                onClick={() => {
+                  setPreviewStep(previewIndex - 1);
+                  setError("");
+                }}
+              >
+                ← Назад
+              </button>
+              <button
+                className="primary"
+                disabled={previewIndex >= previewPages.length - 1}
+                onClick={() => {
+                  const error = pageAnswerError(
+                    s,
+                    previewPages[previewIndex],
+                    previewAnswers,
+                  );
+                  if (error) setError(error);
+                  else {
+                    setError("");
+                    setPreviewStep(previewIndex + 1);
+                  }
+                }}
+              >
+                Далее →
+              </button>
+            </div>
+            <div className="note">{s.thanks}</div>
           </div>
-          {visibleQuestions(s, previewAnswers).map((q, i) => (
-            <section className="summary-card" key={q.id}>
-              <span className="eyebrow">
-                ВОПРОС {i + 1} ·{" "}
-                {q.required ? "ОБЯЗАТЕЛЬНЫЙ" : "НЕОБЯЗАТЕЛЬНЫЙ"}
-              </span>
-              <h2>{q.title}</h2>
-              <p>{q.description}</p>
-              <QuestionInput
-                question={q}
-                value={previewAnswers[q.id]}
-                onChange={(v) =>
-                  setPreviewAnswers((a) => ({ ...a, [q.id]: v }))
-                }
-              />
-            </section>
-          ))}
-          <div className="note">{s.thanks}</div>
         </div>
       )}
     </div>

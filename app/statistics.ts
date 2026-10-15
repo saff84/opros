@@ -13,11 +13,13 @@ export function questionStats(q: Question, rows: Entry[]) {
   const base = rows.filter((r) => answered(q, r));
   const counts = q.options.map((label, i) => {
     const count = base.filter((r) =>
-      q.type === "matrix"
-        ? Object.values(r.answers[q.id] as Record<string, number>).includes(i)
-        : Array.isArray(r.answers[q.id])
-          ? (r.answers[q.id] as string[]).includes(label)
-          : r.answers[q.id] === label,
+      q.type === "ranking"
+        ? (r.answers[q.id] as string[])?.[0] === label
+        : q.type === "matrix"
+          ? Object.values(r.answers[q.id] as Record<string, number>).includes(i)
+          : Array.isArray(r.answers[q.id])
+            ? (r.answers[q.id] as string[]).includes(label)
+            : r.answers[q.id] === label,
     ).length;
     return {
       label,
@@ -26,6 +28,47 @@ export function questionStats(q: Question, rows: Entry[]) {
     };
   });
   return { base, counts };
+}
+export function numericSummary(q: Question, rows: Entry[]) {
+  const values = rows
+    .map((r) => r.answers[q.id])
+    .filter(
+      (v) =>
+        typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v)),
+    )
+    .map(Number);
+  const total = values.length;
+  return {
+    total,
+    average: total ? values.reduce((a, b) => a + b, 0) / total : 0,
+    nps: total
+      ? (100 *
+          (values.filter((v) => v >= 9).length -
+            values.filter((v) => v <= 6).length)) /
+        total
+      : 0,
+  };
+}
+export function rankingStats(q: Question, rows: Entry[]) {
+  return q.options
+    .map((label) => {
+      const positions = rows
+        .map((r) =>
+          Array.isArray(r.answers[q.id])
+            ? (r.answers[q.id] as string[]).indexOf(label)
+            : -1,
+        )
+        .filter((i) => i >= 0)
+        .map((i) => i + 1);
+      return {
+        label,
+        total: positions.length,
+        average: positions.length
+          ? positions.reduce((a, b) => a + b, 0) / positions.length
+          : 0,
+      };
+    })
+    .sort((a, b) => a.average - b.average);
 }
 export function matrixStats(q: Question, rows: Entry[]) {
   return q.rows.map((label) => {

@@ -1,5 +1,5 @@
 ﻿import { getDatabase } from "../../runtime";
-import { isAdmin, originOK, json, rateLimit } from "../../security";
+import { isAdmin, canEdit, originOK, json, rateLimit } from "../../security";
 import {
   detectImage,
   MAX_IMAGE_BYTES,
@@ -7,6 +7,8 @@ import {
 export async function POST(req: Request) {
   if (!originOK(req)) return json({ error: "Запрос отклонён" }, 403);
   if (!(await isAdmin(req))) return json({ error: "Требуется вход" }, 401);
+  if (!(await canEdit(req)))
+    return json({ error: "У вас доступ только к просмотру" }, 403);
   if (!rateLimit("image-upload", 100, 3600_000))
     return json({ error: "Лимит загрузок. Попробуйте позже." }, 429);
   if (Number(req.headers.get("content-length")) > MAX_IMAGE_BYTES)
