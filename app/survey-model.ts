@@ -357,7 +357,10 @@ export function validateSurvey(value: unknown): value is Survey {
     if (q.type === "matrix" && !q.rows.length) return false;
     if (q.exclusive.some((x) => !q.options.includes(x))) return false;
     if (!validFeatureQuestion(q)) return false;
-    if (s.questions.some((p) => p.id !== q.id && p.id === q.id + "__other"))
+    if (
+      q.otherOption &&
+      s.questions.some((p) => p.id !== q.id && p.id === q.id + "__other")
+    )
       return false;
     if (
       q.type === "multiple" &&

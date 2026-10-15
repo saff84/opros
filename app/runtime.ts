@@ -25,6 +25,9 @@ export function getDatabase() {
   CREATE TABLE IF NOT EXISTS team_sessions (token_hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES team_users(id),expires INTEGER NOT NULL);
   CREATE TABLE IF NOT EXISTS survey_templates (id TEXT PRIMARY KEY,title TEXT NOT NULL,definition TEXT NOT NULL);`);
   db.exec(
+    "CREATE TABLE IF NOT EXISTS entry_successors (previous_id TEXT NOT NULL,schema_version INTEGER NOT NULL,next_id TEXT NOT NULL REFERENCES entries(id),PRIMARY KEY(previous_id,schema_version))",
+  );
+  db.exec(
     "CREATE TABLE IF NOT EXISTS survey_versions (survey_id TEXT NOT NULL REFERENCES surveys(id), version INTEGER NOT NULL, definition TEXT NOT NULL, PRIMARY KEY(survey_id,version))",
   );
   db.exec("BEGIN IMMEDIATE");

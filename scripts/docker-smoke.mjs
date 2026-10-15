@@ -120,6 +120,14 @@ async function verifyPersistence(fixture) {
   assert.equal(data.survey.welcome.heading, "Docker welcome");
   assert.equal(data.survey.questions[1].startNewPage, false);
   assert.equal(data.survey.welcome.images[0].src, fixture.imagePath);
+  const backups = await (
+    await request("/api/backups", undefined, cookie)
+  ).json();
+  assert.ok(
+    backups.lastSuccess,
+    "Automatic backup worker must complete its first backup",
+  );
+  assert.ok(backups.files.length > 0);
   assert.equal(
     (await request(fixture.imagePath, undefined, cookie)).status,
     200,
@@ -152,6 +160,10 @@ try {
     `const assert=require('node:assert/strict'),fs=require('node:fs');assert.equal(process.versions.node.split('.')[0],'24');assert.notEqual(process.getuid(),0);for(const p of ['server.js','.next/static','public/sanext_logo.svg','scripts/backup.mjs','scripts/restore.mjs','scripts/import-responses.mjs','scripts/branching.mjs','scripts/image-format.mjs','scripts/welcome.mjs'])assert.ok(fs.existsSync('/app/'+p),p);for(const p of ['.env','tests','scripts/docker-smoke.mjs','scripts/smoke.mjs'])assert.equal(fs.existsSync('/app/'+p),false,p);const {DatabaseSync}=require('node:sqlite');new DatabaseSync(':memory:').close();console.log('Runtime OK: Node '+process.version+', uid='+process.getuid()+', static assets and production helpers present')`,
   ]);
   const fixture = await runHttpChecks({ origin, password });
+  if (process.argv.includes("--browser")) {
+    const { runBrowserChecks } = await import("./browser-check.mjs");
+    await runBrowserChecks({ origin, password: fixture.password });
+  }
   await docker([...compose, "restart", "app"]);
   await up();
   const { cookie, data } = await verifyPersistence(fixture);

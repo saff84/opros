@@ -26,8 +26,6 @@ services:
     command: ["node", "scripts/backup-worker.mjs"]
     healthcheck:
       disable: true
-    healthcheck:
-      disable: true
     environment:
       DATABASE_PATH: /data/survey.sqlite
     volumes:

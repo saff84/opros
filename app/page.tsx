@@ -16,30 +16,98 @@ import { visiblePages, pageAnswerError } from "./survey-pages";
 import { otherKey } from "../scripts/survey-features.mjs";
 import { SurveyChooser } from "./survey-list";
 import { tools } from "./data";
+import { recoverCompatibleAnswers } from "./live-survey";
 export default function Home() {
   const [surveys, setSurveys] = useState<Survey[]>([]),
     [survey, setSurvey] = useState<Survey | null>(null),
     [error, setError] = useState(""),
     [loading, setLoading] = useState(true);
+  const [updateNotice, setUpdateNotice] = useState("");
   useEffect(() => {
-    const id = new URLSearchParams(location.search).get("survey");
-    fetch("/api/surveys?public=1" + (id ? "&id=" + encodeURIComponent(id) : ""))
-      .then(apiJson)
-      .then(async (d) => {
-        if (d.survey) setSurvey(d.survey);
-        else if (d.surveys.length === 1)
-          await fetch(
-            "/api/surveys?public=1&id=" + encodeURIComponent(d.surveys[0].id),
-          )
-            .then(apiJson)
-            .then((x) => setSurvey(x.survey))
-            .catch((e) => setError(e.message));
-        else setSurveys(d.surveys);
-      })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
+    let selectedId = new URLSearchParams(location.search).get("survey"),
+      previous: Survey | null = null,
+      pending = false,
+      alive = true;
+    const controller = new AbortController();
+    async function refresh() {
+      if (pending || document.visibilityState === "hidden") return;
+      pending = true;
+      try {
+        const response = await fetch(
+          "/api/surveys?public=1" +
+            (selectedId ? "&id=" + encodeURIComponent(selectedId) : ""),
+          { cache: "no-store", signal: controller.signal },
+        );
+        const d = await apiJson(response);
+        if (!alive) return;
+        let next: Survey | null = d.survey || null;
+        if (!next && d.surveys?.length === 1) {
+          next = (
+            await apiJson(
+              await fetch(
+                "/api/surveys?public=1&id=" +
+                  encodeURIComponent(d.surveys[0].id),
+                { cache: "no-store", signal: controller.signal },
+              ),
+            )
+          ).survey;
+        }
+        if (!alive) return;
+        if (next) {
+          selectedId = next.id;
+          if (previous && previous.revision !== next.revision)
+            setUpdateNotice(
+              (previous.schemaVersion || 1) !== (next.schemaVersion || 1)
+                ? "Вопросы опроса обновлены. Подходящие ответы черновика восстановлены; проверьте новые и изменённые вопросы."
+                : "Оформление и тексты опроса обновлены.",
+            );
+          if (!previous || previous.revision !== next.revision) setSurvey(next);
+          previous = next;
+        } else {
+          setSurveys(d.surveys || []);
+          setSurvey(null);
+        }
+        setError("");
+      } catch (e) {
+        if (!alive || controller.signal.aborted) return;
+        if (e instanceof ApiError && e.status === 404) {
+          previous = null;
+          setSurvey(null);
+          setError(e.message);
+        } else if (!previous) setError((e as Error).message);
+      } finally {
+        pending = false;
+        if (alive) setLoading(false);
+      }
+    }
+    void refresh();
+    const timer = setInterval(() => void refresh(), 5000);
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === "sanext-survey-updated") void refresh();
+    };
+    const onFocus = () => void refresh();
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("sanext-survey-refresh", onFocus);
+    return () => {
+      alive = false;
+      controller.abort();
+      clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("sanext-survey-refresh", onFocus);
+    };
   }, []);
-  if (survey) return <SurveyForm key={survey.id} survey={survey} />;
+  if (survey)
+    return (
+      <SurveyForm
+        key={survey.id + "-" + (survey.schemaVersion || 1)}
+        survey={survey}
+        updateNotice={updateNotice}
+      />
+    );
   return (
     <>
       <header>
@@ -70,7 +138,13 @@ export default function Home() {
     </>
   );
 }
-function SurveyForm({ survey: s }: { survey: Survey }) {
+function SurveyForm({
+  survey: s,
+  updateNotice,
+}: {
+  survey: Survey;
+  updateNotice: string;
+}) {
   const [answers, setAnswers] = useState<AnswerMap>(() => emptyAnswers(s)),
     [name, setName] = useState(""),
     [department, setDepartment] = useState(""),
@@ -132,6 +206,8 @@ function SurveyForm({ survey: s }: { survey: Survey }) {
     if (!r.ok) {
       if (data.code === "SESSION_EXPIRED") setExpired(true);
       if (data.code === "SURVEY_UPDATED") setUpdated(true);
+      if (data.code === "SURVEY_UPDATED")
+        window.dispatchEvent(new Event("sanext-survey-refresh"));
       if (data.code === "COMPLETED") {
         finished.current = true;
         setDone(true);
@@ -188,6 +264,50 @@ function SurveyForm({ survey: s }: { survey: Survey }) {
             };
         }
       } catch {}
+      if (!backup && (s.schemaVersion || 1) > 1) {
+        try {
+          const candidates = Object.keys(localStorage)
+            .filter(
+              (key) =>
+                (key.startsWith(storage + "-v") &&
+                  key.endsWith("-backup") &&
+                  key !== backupStorage) ||
+                key === storage + "-backup",
+            )
+            .map((key) => ({
+              version: Number(key.match(/-v(\d+)-backup$/)?.[1] || 1),
+              value: JSON.parse(localStorage.getItem(key) || "null"),
+            }))
+            .filter(
+              (item) =>
+                item.version < (s.schemaVersion || 1) &&
+                item.value?.answers &&
+                item.value?.dirty &&
+                item.value?.schema,
+            )
+            .sort((a, b) => b.version - a.version);
+          for (const { value: candidate } of candidates) {
+            const previousQuestions = JSON.parse(candidate.schema);
+            if (!Array.isArray(previousQuestions)) continue;
+            const compatible = recoverCompatibleAnswers(
+              s,
+              previousQuestions,
+              candidate.answers,
+              d.answers,
+            );
+            if (!validateAnswers(s, compatible, false)) {
+              backup = {
+                ...candidate,
+                answers: compatible,
+                schema: JSON.stringify(s.questions),
+                revision: s.revision,
+                dirty: true,
+              };
+              break;
+            }
+          }
+        } catch {}
+      }
       const recover =
         d.status !== "completed" &&
         (backup?.schema === JSON.stringify(s.questions) ||
@@ -372,6 +492,11 @@ function SurveyForm({ survey: s }: { survey: Survey }) {
       <main>
         <WelcomeBlock survey={s} />
         <section className="panel">
+          {updateNotice && (
+            <div className="notice" role="status">
+              {updateNotice}
+            </div>
+          )}
           {done ? (
             <div className="welcome">
               <div className="success">✓</div>

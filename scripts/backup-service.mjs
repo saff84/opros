@@ -45,6 +45,7 @@ export function backupFiles() {
 export async function runBackup(force = false) {
   const source = resolve(process.env.DATABASE_PATH || "/data/survey.sqlite");
   const db = new DatabaseSync(source);
+  db.exec("PRAGMA busy_timeout=5000");
   const put = (key, value) =>
     db
       .prepare(

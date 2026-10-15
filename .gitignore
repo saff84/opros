@@ -49,3 +49,4 @@ Thumbs.db
 *.tar
 *.tar.gz
 
+artifacts/

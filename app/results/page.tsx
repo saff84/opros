@@ -19,6 +19,7 @@ import { builtInTemplates, templateSurvey } from "../templates";
 import { legacySurvey } from "../survey-model";
 import { downloadPdf } from "../pdf-report";
 import { isSurveyOpen } from "../../scripts/survey-features.mjs";
+import { announceSurveyUpdate } from "../live-survey";
 type Listed = Survey & { total: number; completed: number };
 const statuses = {
   draft: "Неактивен · черновик",
@@ -203,6 +204,7 @@ export default function Results() {
       body: JSON.stringify({ survey: s, create: edit?.create }),
     });
     setEdit(null);
+    announceSurveyUpdate();
     await load();
     await open(d.survey);
     setNotice(`Опрос сохранён. Вопросов: ${d.survey.questions.length}.`);
@@ -216,6 +218,7 @@ export default function Results() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ survey: { ...s, status } }),
       });
+      announceSurveyUpdate();
       await load();
       if (selected?.id === s.id) {
         setCurrentSurvey(d.survey);
@@ -539,7 +542,7 @@ export default function Results() {
                       Статистика ↗
                     </button>
                     <button
-                      disabled={busy}
+                      disabled={busy || !canWrite}
                       onClick={() =>
                         setEdit({
                           survey: s,
@@ -559,7 +562,7 @@ export default function Results() {
                   <div className="card-footer">
                     <button
                       className="text-button"
-                      disabled={busy}
+                      disabled={busy || !canWrite}
                       onClick={() =>
                         void changeStatus(
                           s,
@@ -584,7 +587,7 @@ export default function Results() {
                     )}
                     <button
                       className="text-button"
-                      disabled={busy}
+                      disabled={busy || !canWrite}
                       onClick={() =>
                         void changeStatus(
                           s,
@@ -638,6 +641,7 @@ export default function Results() {
                     Обновить
                   </button>
                   <button
+                    disabled={busy || !canWrite}
                     onClick={() =>
                       setEdit({
                         survey: currentSurvey || selected,
@@ -647,11 +651,14 @@ export default function Results() {
                   >
                     Редактировать
                   </button>
-                  <button onClick={() => create(selected)}>
+                  <button
+                    disabled={busy || !canWrite}
+                    onClick={() => create(selected)}
+                  >
                     Создать копию
                   </button>
                   <button
-                    disabled={busy}
+                    disabled={busy || !canWrite}
                     onClick={() =>
                       void changeStatus(
                         currentSurvey || selected,

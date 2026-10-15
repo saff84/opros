@@ -194,23 +194,23 @@ sudo docker compose exec app node scripts/backup.mjs /data/backups/survey-backup
 sudo docker compose cp app:/data/backups/survey-backup.sqlite ./backups/survey-backup.sqlite
 ```
 
-Файл содержит ответы сотрудников. Сохраняйте копию также вне этого сервера. Эта инструкция не включает автоматическое расписание бэкапов: его нужно настроить отдельно.
+Файл содержит ответы сотрудников. Сохраняйте копию также вне этого сервера. Автоматическое расписание работает через сервис `backup` и настраивается в кабинете: [FEATURES.md](FEATURES.md).
 
 Восстановление заменяет текущую базу выбранной копией. Сначала сохраните актуальную базу командой выше. Затем:
 
 ```bash
-sudo docker compose stop app
+sudo docker compose stop app backup
 sudo docker compose run --rm --no-deps app node scripts/restore.mjs /data/backups/survey-backup.sqlite
-sudo docker compose up -d app
+sudo docker compose up -d app backup
 ```
 
 Для восстановления файла с компьютера сначала загрузите его в `backups/survey-backup.sqlite` на сервере, затем при работающем приложении:
 
 ```bash
 sudo docker compose cp ./backups/survey-backup.sqlite app:/data/restore.sqlite
-sudo docker compose stop app
+sudo docker compose stop app backup
 sudo docker compose run --rm --no-deps app node scripts/restore.mjs /data/restore.sqlite
-sudo docker compose up -d app
+sudo docker compose up -d app backup
 ```
 
 ## 10. Обновление и остановка
@@ -246,7 +246,7 @@ sudo docker compose -f docker-compose.yml -f docker-compose.https.yml down
 | Сервер не открывается               | Контейнеры в `docker compose ps`, DNS, firewall, занятые порты                                                    |
 | `unhealthy`                         | `ADMIN_PASSWORD` не короче 16 символов, корректность `PUBLIC_ORIGIN`, логи `app`, доступность тома                |
 | «Запрос отклонён»                   | Точное совпадение `PUBLIC_ORIGIN` с адресом в браузере, отсутствие `/` в конце, перезапуск после изменения `.env` |
-| Браузер показывает старый интерфейс | Ctrl+F5 или очистка кеша страницы                                                                                 |
+| Браузер показывает старые вопросы | Изменения опроса появляются в течение 5 секунд и при возвращении на вкладку; после обновления кода приложения достаточно обычной перезагрузки |
 | Caddy не получает сертификат        | DNS A/AAAA, доступность TCP 80/443, логи `caddy`                                                                  |
 | Сборка прервана / killed            | Объём RAM, свободный диск, доступ к npm и Docker Hub                                                              |
 | После перезапуска пропали ответы    | Не менялось ли имя проекта, подключён ли том `survey_data`, не использовался ли `down -v`                         |
@@ -279,3 +279,6 @@ SQLite подходит для одного экземпляра этого пр
 - Next.js standalone: https://nextjs.org/docs/app/api-reference/config/next-config-js/output
 - SQLite в Node.js 24: https://nodejs.org/download/release/latest-v24.x/docs/api/sqlite.html
 - Caddy reverse proxy: https://caddyserver.com/docs/caddyfile/directives/reverse_proxy
+# Расширенные возможности
+
+Актуальное описание воронки, QR-кодов, расписания, шаблонов, новых вопросов, ролей, PDF, автоматических копий и обновления открытых страниц: [FEATURES.md](FEATURES.md).

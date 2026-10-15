@@ -74,13 +74,21 @@ export async function POST(req: Request) {
             before &&
             JSON.stringify(before) === JSON.stringify(q) &&
             values[q.id] !== undefined
-          )
+          ) {
             initial[q.id] = values[q.id];
+            if (q.otherOption && values[q.id + "__other"] !== undefined)
+              initial[q.id + "__other"] = values[q.id + "__other"];
+          }
         }
         initialName = previous.name;
         if (!rateLimit("new-session", 300, 3600_000))
           return json({ error: "Лимит новых сессий. Попробуйте позже." }, 429);
-        id = crypto.randomUUID();
+        const successor = db
+          .prepare(
+            "SELECT next_id FROM entry_successors WHERE previous_id=? AND schema_version=?",
+          )
+          .get(previous.id, version) as { next_id: string } | undefined;
+        id = successor?.next_id || crypto.randomUUID();
       }
       const now = new Date().toISOString();
       db.prepare(
@@ -95,6 +103,12 @@ export async function POST(req: Request) {
         JSON.stringify(sanitizeAnswers(s, initial)),
         version,
       );
+      if (previous && previous.schema_version !== version)
+        db.prepare("INSERT OR IGNORE INTO entry_successors VALUES (?,?,?)").run(
+          previous.id,
+          version,
+          id,
+        );
       const row = db
         .prepare("SELECT * FROM entries WHERE id=? AND survey_id=?")
         .get(id, s.id) as any;
@@ -106,9 +120,28 @@ export async function POST(req: Request) {
         typeof body.campaign === "string"
           ? body.campaign.trim().slice(0, 160)
           : "";
+      const priorContext =
+        previous && previous.schema_version !== version
+          ? (db
+              .prepare("SELECT * FROM entry_context WHERE entry_id=?")
+              .get(previous.id) as
+              | {
+                  source: string;
+                  campaign: string;
+                  department: string;
+                  region: string;
+                }
+              | undefined)
+          : undefined;
       db.prepare(
-        "INSERT OR IGNORE INTO entry_context(entry_id,source,campaign) VALUES (?,?,?)",
-      ).run(id, source || "direct", campaign);
+        "INSERT OR IGNORE INTO entry_context(entry_id,source,campaign,department,region) VALUES (?,?,?,?,?)",
+      ).run(
+        id,
+        priorContext?.source || source || "direct",
+        priorContext?.campaign ?? campaign,
+        priorContext?.department || "",
+        priorContext?.region || "",
+      );
       return json({
         id,
         sessionToken: await signSession(id, s.id),

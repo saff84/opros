@@ -3,6 +3,8 @@ import { isAdmin, canEdit, json, originOK, readBody } from "../../security";
 import { Survey, validateSurvey } from "../../survey-model";
 import { surveyImageSources } from "../../../scripts/welcome.mjs";
 import { isSurveyOpen } from "../../../scripts/survey-features.mjs";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 export async function GET(req: Request) {
   const db = getDatabase(),
     admin =

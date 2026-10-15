@@ -1,6 +1,13 @@
 "use client";
 import { useState } from "react";
-import type { Survey, Entry } from "../survey-model";
+import type { Survey, Entry, Question } from "../survey-model";
+export function compatibleQuestions(a: Question, b: Question) {
+  return (
+    a.title === b.title &&
+    a.type === b.type &&
+    JSON.stringify(a.options) === JSON.stringify(b.options)
+  );
+}
 import { questionStats, numericSummary } from "../statistics";
 import { visibleQuestions } from "../branching";
 import { apiJson } from "../api-client";
@@ -170,19 +177,16 @@ export default function Comparison({
                     q.type !== "ranking",
                 )
                 .map((q) => {
-                  const match = bSurvey?.questions.find(
-                    (p) =>
-                      (p.id === q.id || p.title === q.title) &&
-                      p.type === q.type &&
-                      JSON.stringify(p.options) === JSON.stringify(q.options),
+                  const match = bSurvey?.questions.find((p) =>
+                    compatibleQuestions(q, p),
                   );
                   if (!match)
                     return (
                       <tr key={q.id}>
                         <td>{q.title}</td>
                         <td colSpan={3}>
-                          Нет совместимого вопроса: тип и варианты должны
-                          совпадать.
+                          Нет совместимого вопроса: формулировка, тип и варианты
+                          должны совпадать.
                         </td>
                       </tr>
                     );
