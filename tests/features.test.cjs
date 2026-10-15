@@ -621,6 +621,141 @@ test("SQLite backup includes question images and credential settings", () => {
   );
   backup.close();
 });
+test("Welcome block stores custom text and images without changing question version, keeps assets private and imports them", async () => {
+  cookie = "survey_admin=" + security.createAdminSession();
+  const uploaded = await images.POST(
+    new Request(process.env.PUBLIC_ORIGIN + "/api/images", {
+      method: "POST",
+      headers: {
+        Origin: process.env.PUBLIC_ORIGIN,
+        Cookie: cookie,
+        "Content-Type": "image/png",
+      },
+      body: png,
+    }),
+  );
+  assert.equal(uploaded.status, 201);
+  const asset = (await uploaded.json()).image;
+  assert.equal((await imageGet(asset.src.split("/").pop())).status, 404);
+  const base = await create([q("answer", "Ваш ответ")]);
+  const welcome = {
+    heading: "Привет, команда!",
+    description: "Цель\nопроса",
+    eyebrow: "Начнём",
+    footer: "Спасибо",
+    symbol: "★",
+    showFooter: true,
+    showStripe: false,
+    align: "center",
+    textColor: "#112233",
+    titleSize: 52,
+    imagePosition: "top",
+    imageFit: "cover",
+    images: [{ ...asset, alt: "Наша команда" }],
+  };
+  const response = await surveys.POST(
+    req("/api/surveys", { survey: { ...base, welcome } }, true),
+  );
+  assert.equal(response.status, 200);
+  const saved = (await response.json()).survey;
+  assert.deepEqual(saved.welcome, welcome);
+  assert.equal(saved.schemaVersion, base.schemaVersion);
+  assert.equal(saved.revision, base.revision + 1);
+  assert.equal((await imageGet(asset.src.split("/").pop())).status, 200);
+  const publicSurvey = await surveys.GET(
+    req("/api/surveys?public=1&id=" + saved.id),
+  );
+  assert.deepEqual((await publicSurvey.json()).survey.welcome, welcome);
+  const {
+    surveyImageSources,
+    validWelcome,
+  } = require("../scripts/welcome.mjs");
+  assert.deepEqual(surveyImageSources(saved), [asset.src]);
+  for (const invalid of [
+    { titleSize: 100 },
+    { align: "right" },
+    { textColor: "red" },
+    { images: [{ src: "https://bad.test/img", alt: "" }] },
+    { images: Array(5).fill(asset) },
+  ]) {
+    assert.equal(validWelcome(invalid), false);
+    assert.equal(model.validateSurvey({ ...saved, welcome: invalid }), false);
+  }
+  const unknown = await surveys.POST(
+    req(
+      "/api/surveys",
+      {
+        survey: {
+          ...saved,
+          welcome: {
+            images: [{ src: "/api/images/" + crypto.randomUUID(), alt: "" }],
+          },
+        },
+      },
+      true,
+    ),
+  );
+  assert.equal(unknown.status, 400);
+  const file = join(directory, "welcome-import.json");
+  const portable = {
+    version: 2,
+    survey: { ...saved, id: crypto.randomUUID() },
+    rows: [],
+    images: [
+      {
+        id: asset.src.split("/").pop(),
+        mime: "image/png",
+        data: png.toString("base64"),
+      },
+    ],
+  };
+  writeFileSync(file, JSON.stringify(portable));
+  const imported = spawnSync(
+    process.execPath,
+    ["scripts/import-responses.mjs", file],
+    { encoding: "utf8" },
+  );
+  assert.equal(imported.status, 0, imported.stderr);
+  assert.deepEqual(dbModule.getSurvey(portable.survey.id).welcome, welcome);
+  const React = require("react"),
+    { renderToStaticMarkup } = require("react-dom/server"),
+    { WelcomeBlock } = require("../app/welcome-block.tsx");
+  const html = renderToStaticMarkup(
+    React.createElement(WelcomeBlock, { survey: saved }),
+  );
+  assert.match(html, /Привет, команда!/);
+  assert.match(html, /Наша команда/);
+  assert.match(html, /welcome-no-stripe/);
+  assert.match(html, /text-align:center/);
+  assert.match(html, /object-fit:cover/);
+  const hidden = renderToStaticMarkup(
+    React.createElement(WelcomeBlock, {
+      survey: {
+        ...saved,
+        welcome: { heading: "<script>", showFooter: false, images: [] },
+      },
+    }),
+  );
+  assert.match(hidden, /&lt;script&gt;/);
+  assert.doesNotMatch(hidden, /aside-bottom/);
+  const archived = await surveys.POST(
+    req("/api/surveys", { survey: { ...saved, status: "archived" } }, true),
+  );
+  assert.equal(archived.status, 200);
+  // The imported survey also references this file, so close it before checking privacy.
+  const copy = dbModule.getSurvey(portable.survey.id);
+  assert.equal(
+    (
+      await surveys.POST(
+        req("/api/surveys", { survey: { ...copy, status: "draft" } }, true),
+      )
+    ).status,
+    200,
+  );
+  assert.equal((await imageGet(asset.src.split("/").pop())).status, 404);
+  assert.equal((await imageGet(asset.src.split("/").pop(), true)).status, 200);
+});
+
 test("Environment password recovery revokes admins and keeps signed visitor sessions", async () => {
   const visitor = await security.signSession(crypto.randomUUID(), "legacy"),
     old = cookie;

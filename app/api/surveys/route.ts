@@ -1,6 +1,7 @@
 ﻿import { getDatabase, getSurvey } from "../../runtime";
 import { isAdmin, json, originOK, readBody } from "../../security";
 import { Survey, validateSurvey } from "../../survey-model";
+import { surveyImageSources } from "../../../scripts/welcome.mjs";
 export async function GET(req: Request) {
   const db = getDatabase(),
     admin =
@@ -78,12 +79,11 @@ export async function POST(req: Request) {
       );
     }
     if (
-      input.questions.some(
-        (q) =>
-          q.image &&
+      surveyImageSources(input).some(
+        (src) =>
           !db
             .prepare("SELECT id FROM images WHERE id=?")
-            .get(q.image.src.split("/").pop()!),
+            .get(src.split("/").pop()!),
       )
     ) {
       db.exec("ROLLBACK");
@@ -105,6 +105,7 @@ export async function POST(req: Request) {
       background: input.background,
       status: input.status,
       questions: input.questions,
+      ...(input.welcome ? { welcome: input.welcome } : {}),
       schemaVersion: current
         ? (current.schemaVersion || 1) + (structureChanged ? 1 : 0)
         : 1,

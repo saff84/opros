@@ -199,4 +199,54 @@ test("Question displays range, exact count, selected count and maximum reached h
   );
   assert.match(editor, /Минимум вариантов/);
   assert.match(editor, /Максимум вариантов/);
+  assert.equal((editor.match(/<details\b/g) || []).length, 2);
+  assert.ok(
+    editor.indexOf("Формулировка") < editor.indexOf("Картинка к вопросу"),
+  );
+  assert.match(editor, /У первого вопроса нет предыдущих ответов/);
+  assert.match(editor, /только если выше выбрано/);
+});
+
+test("At maximum every unselected option including exclusive is disabled; deselecting frees all options", () => {
+  const React = require("react");
+  const { renderToStaticMarkup } = require("react-dom/server");
+  const { QuestionInput } = require("../app/question-input.tsx");
+  const buttons = (value, q = question) => {
+    const html = renderToStaticMarkup(
+      React.createElement(QuestionInput, {
+        question: q,
+        value,
+        onChange: () => {},
+      }),
+    );
+    return [...html.matchAll(/<button\b([^>]*)>(.*?)<\/button>/g)].map(
+      ([, attributes, body]) => ({
+        disabled: attributes.includes('disabled=""'),
+        selected: attributes.includes('aria-pressed="true"'),
+        body,
+      }),
+    );
+  };
+  const full = buttons(["A", "B", "C"]);
+  assert.equal(
+    full.filter((b) => b.selected).every((b) => !b.disabled),
+    true,
+  );
+  assert.equal(
+    full.filter((b) => !b.selected).every((b) => b.disabled),
+    true,
+  );
+  assert.equal(
+    buttons(["A", "B"]).every((b) => !b.disabled),
+    true,
+  );
+  const exclusiveAtOne = buttons(["Нет"], {
+    ...question,
+    minChoices: 0,
+    maxChoices: 1,
+  });
+  assert.equal(
+    exclusiveAtOne.filter((b) => !b.selected).every((b) => b.disabled),
+    true,
+  );
 });

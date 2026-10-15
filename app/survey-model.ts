@@ -1,5 +1,21 @@
 ﻿import { visibleQuestions, branchingError, ShowWhen } from "./branching";
 import { tools, ratings, barriers, needs, titles, Answers } from "./data";
+import { validWelcome } from "../scripts/welcome.mjs";
+export type Welcome = {
+  eyebrow?: string;
+  heading?: string;
+  description?: string;
+  footer?: string;
+  symbol?: string;
+  showFooter?: boolean;
+  showStripe?: boolean;
+  align?: "left" | "center";
+  textColor?: string;
+  titleSize?: number;
+  imagePosition?: "top" | "bottom";
+  imageFit?: "contain" | "cover";
+  images?: { src: string; alt: string }[];
+};
 export type Question = {
   id: string;
   title: string;
@@ -15,6 +31,7 @@ export type Question = {
   image?: { src: string; alt: string };
 };
 export type Survey = {
+  welcome?: Welcome;
   id: string;
   title: string;
   description: string;
@@ -247,6 +264,7 @@ export function validateAnswers(
 export function validateSurvey(value: unknown): value is Survey {
   if (!value || typeof value !== "object") return false;
   const s = value as Survey;
+  if (!validWelcome(s.welcome)) return false;
   if (
     typeof s.title !== "string" ||
     !s.title.trim() ||

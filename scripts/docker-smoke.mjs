@@ -113,6 +113,8 @@ async function verifyPersistence(fixture) {
   const data = await result.json();
   assert.equal(data.rows.length, 1);
   assert.deepEqual(data.rows[0].answers, { gate: "No" });
+  assert.equal(data.survey.welcome.heading, "Docker welcome");
+  assert.equal(data.survey.welcome.images[0].src, fixture.imagePath);
   assert.equal(
     (await request(fixture.imagePath, undefined, cookie)).status,
     200,
@@ -142,7 +144,7 @@ try {
     "app",
     "node",
     "-e",
-    `const assert=require('node:assert/strict'),fs=require('node:fs');assert.equal(process.versions.node.split('.')[0],'24');assert.notEqual(process.getuid(),0);for(const p of ['server.js','.next/static','public/sanext_logo.svg','scripts/backup.mjs','scripts/restore.mjs','scripts/import-responses.mjs','scripts/branching.mjs','scripts/image-format.mjs'])assert.ok(fs.existsSync('/app/'+p),p);for(const p of ['.env','tests','scripts/docker-smoke.mjs','scripts/smoke.mjs'])assert.equal(fs.existsSync('/app/'+p),false,p);const {DatabaseSync}=require('node:sqlite');new DatabaseSync(':memory:').close();console.log('Runtime OK: Node '+process.version+', uid='+process.getuid()+', static assets and production helpers present')`,
+    `const assert=require('node:assert/strict'),fs=require('node:fs');assert.equal(process.versions.node.split('.')[0],'24');assert.notEqual(process.getuid(),0);for(const p of ['server.js','.next/static','public/sanext_logo.svg','scripts/backup.mjs','scripts/restore.mjs','scripts/import-responses.mjs','scripts/branching.mjs','scripts/image-format.mjs','scripts/welcome.mjs'])assert.ok(fs.existsSync('/app/'+p),p);for(const p of ['.env','tests','scripts/docker-smoke.mjs','scripts/smoke.mjs'])assert.equal(fs.existsSync('/app/'+p),false,p);const {DatabaseSync}=require('node:sqlite');new DatabaseSync(':memory:').close();console.log('Runtime OK: Node '+process.version+', uid='+process.getuid()+', static assets and production helpers present')`,
   ]);
   const fixture = await runHttpChecks({ origin, password });
   await docker([...compose, "restart", "app"]);

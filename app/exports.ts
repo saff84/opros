@@ -1,4 +1,5 @@
-﻿import { visibleQuestions } from "./branching";
+import { surveyImageSources } from "../scripts/welcome.mjs";
+import { visibleQuestions } from "./branching";
 import { Survey, Entry } from "./survey-model";
 import { answerText } from "./question-input";
 import { summaryTable } from "./statistics";
@@ -195,9 +196,7 @@ export async function exportResults(format: string, s: Survey, rows: Entry[]) {
     "-v" +
     (s.schemaVersion || 1);
   if (format === "json") {
-    const sources = Array.from(
-      new Set(s.questions.flatMap((q) => (q.image ? [q.image.src] : []))),
-    );
+    const sources = surveyImageSources(s);
     const images = await Promise.all(
       sources.map(async (src) => {
         const response = await fetch(src + "?format=json", {

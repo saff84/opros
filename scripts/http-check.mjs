@@ -210,6 +210,10 @@ export async function runHttpChecks({ origin, password }) {
   const branchDefinition = {
     ...definition,
     title: "Branch smoke",
+    welcome: {
+      heading: "Docker welcome",
+      images: [{ ...image, alt: "Welcome image" }],
+    },
     questions: [
       {
         ...definition.questions[0],
@@ -232,6 +236,7 @@ export async function runHttpChecks({ origin, password }) {
   );
   assert.equal(branchCreated.status, 200);
   const branchSurvey = (await branchCreated.json()).survey;
+  assert.equal(branchSurvey.welcome.heading, "Docker welcome");
   assert.equal(
     (await fetch(origin + image.src)).headers.get("content-type"),
     "image/png",

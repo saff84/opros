@@ -1992,8 +1992,67 @@ input[type="color"] {
   background: #f7f9fc;
   border: 1px solid var(--line);
   border-radius: 12px;
-  padding: 20px;
-  margin: 20px 0;
+  padding: 14px 16px;
+  margin: 0;
+  min-width: 0;
+}
+.question-extras {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 14px;
+  margin-top: 18px;
+}
+.question-config > summary {
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+}
+.question-config > summary span {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+  margin-left: 8px;
+}
+.question-config > summary:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 4px;
+}
+.question-editor .label {
+  margin: 14px 0;
+}
+.question-editor .label > span,
+.question-editor .field-help {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+  font-weight: 400;
+  margin: 4px 0 7px;
+}
+.question-editor input,
+.question-editor select,
+.question-editor textarea {
+  padding: 10px 12px;
+  font-size: 14px;
+}
+.question-editor textarea {
+  min-height: 100px;
+}
+.question-editor .form-grid {
+  gap: 16px;
+}
+.question-config .small {
+  margin: 10px 0;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.question-config .editor-image {
+  max-height: 120px;
+}
+@media (max-width: 760px) {
+  .question-extras {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .question-config h3 {
   margin: 0;
@@ -2023,6 +2082,97 @@ input[type="color"] {
 }
 .question-config input[type="file"] {
   font-size: 12px;
+}
+.welcome-block h1 {
+  font-size: clamp(24px, 4vw, var(--welcome-title-size, 46px));
+}
+.welcome-block > p,
+.welcome-block .aside-bottom {
+  color: inherit;
+}
+.welcome-block > p {
+  max-width: none;
+}
+.welcome-block .aside-bottom {
+  display: block;
+  position: static;
+  margin-top: 48px;
+}
+.welcome-block .big {
+  display: block;
+}
+.welcome-block.welcome-no-stripe::after {
+  display: none;
+}
+.welcome-gallery {
+  display: grid;
+  gap: 16px;
+  margin: 24px 0;
+}
+.welcome-gallery figure {
+  margin: 0;
+  min-width: 0;
+}
+.welcome-gallery img {
+  display: block;
+  width: 100%;
+  height: 240px;
+  border-radius: 12px;
+}
+.welcome-gallery figcaption {
+  font-size: 12px;
+  line-height: 1.5;
+  margin-top: 7px;
+  white-space: pre-wrap;
+}
+.welcome-settings {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(260px, 2fr);
+  gap: 24px;
+  align-items: start;
+}
+.welcome-fields {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.welcome-live-preview {
+  position: sticky;
+  top: 120px;
+  margin-top: 24px;
+  border-radius: 16px;
+  overflow: hidden;
+}
+.welcome-live-preview .welcome-block,
+.preview-intro .welcome-block {
+  padding: 32px 24px;
+  min-height: 420px;
+  position: relative;
+}
+.welcome-image-editor {
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  border-top: 1px solid var(--line);
+  padding: 12px 0;
+}
+.welcome-image-editor > img {
+  width: 80px;
+  height: 70px;
+  object-fit: contain;
+}
+.welcome-image-editor .actions {
+  grid-column: 1 / -1;
+}
+@media (max-width: 1000px) {
+  .welcome-settings {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .welcome-live-preview {
+    position: static;
+  }
 }
 .card-footer {
   flex-wrap: wrap;

@@ -4,6 +4,7 @@
   branchingError,
 } from "./branching.mjs";
 import { detectImage, MAX_IMAGE_BYTES } from "./image-format.mjs";
+import { validWelcome, surveyImageSources } from "./welcome.mjs";
 import { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
 if (!process.argv[2])
@@ -45,6 +46,7 @@ if (
 )
   throw Error("Invalid survey definition");
 if (branchingError(survey)) throw Error(branchingError(survey));
+if (!validWelcome(survey.welcome)) throw Error("Invalid welcome block");
 const version = survey.schemaVersion || 1;
 if (!Number.isInteger(version) || version < 1)
   throw Error("Invalid schema version");
@@ -189,7 +191,7 @@ const entries = rows.map((r) => {
   };
 });
 const imageInput = modern ? input.images || [] : [];
-if (!Array.isArray(imageInput) || imageInput.length > 60)
+if (!Array.isArray(imageInput) || imageInput.length > 64)
   throw Error("Invalid image bundle");
 const images = imageInput.map((image) => {
   if (
@@ -226,12 +228,9 @@ try {
       new Date().toISOString(),
     );
   }
-  for (const q of survey.questions)
+  for (const src of surveyImageSources(survey))
     if (
-      q.image &&
-      !db
-        .prepare("SELECT id FROM images WHERE id=?")
-        .get(q.image.src.split("/").pop())
+      !db.prepare("SELECT id FROM images WHERE id=?").get(src.split("/").pop())
     )
       throw Error("Missing image file; export JSON with bundled images");
   const existing = db

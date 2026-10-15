@@ -22,6 +22,7 @@ function AnswerInput({
   const chosen = Array.isArray(value) ? value : [];
   function toggle(option: string) {
     if (chosen.includes(option)) onChange(chosen.filter((x) => x !== option));
+    else if (disabled || chosen.length >= q.maxChoices) return;
     else if (q.exclusive.includes(option)) onChange([option]);
     else {
       const next = chosen.filter((x) => !q.exclusive.includes(x));
@@ -110,9 +111,7 @@ function AnswerInput({
                 disabled ||
                 (!selected &&
                   q.type === "multiple" &&
-                  !q.exclusive.includes(o) &&
-                  chosen.filter((x) => !q.exclusive.includes(x)).length >=
-                    q.maxChoices)
+                  chosen.length >= q.maxChoices)
               }
               key={o}
               className={"option " + (selected ? "selected" : "")}

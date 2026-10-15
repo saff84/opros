@@ -1,4 +1,5 @@
-﻿"use client";
+"use client";
+import { WelcomeBlock } from "./welcome-block";
 import { visibleQuestions, sanitizeAnswers } from "./branching";
 import { useEffect, useRef, useState } from "react";
 import Brand from "./brand";
@@ -324,14 +325,7 @@ function SurveyForm({ survey: s }: { survey: Survey }) {
         </div>
       </header>
       <main>
-        <aside>
-          <div className="eyebrow">ВАШ ОПЫТ ИМЕЕТ ЗНАЧЕНИЕ</div>
-          <h1>{s.title}</h1>
-          <p>{s.description}</p>
-          <div className="aside-bottom">
-            <span className="big">↗</span>Вместе определяем приоритеты
-          </div>
-        </aside>
+        <WelcomeBlock survey={s} />
         <section className="panel">
           {done ? (
             <div className="welcome">

@@ -8,6 +8,8 @@ import {
   validateSurvey,
 } from "../survey-model";
 import { QuestionInput, theme } from "../question-input";
+import WelcomeEditor from "./welcome-editor";
+import { WelcomeBlock } from "../welcome-block";
 export function newQuestion(): Question {
   return {
     id:
@@ -117,6 +119,12 @@ export default function Editor({
         </div>
       </div>
       <div className="view-tabs">
+        <button
+          className={tab === "welcome" ? "active" : ""}
+          onClick={() => setTab("welcome")}
+        >
+          Приветственный блок
+        </button>
         <button
           className={tab === "content" ? "active" : ""}
           onClick={() => setTab("content")}
@@ -242,245 +250,9 @@ export default function Editor({
                 </div>
               </div>
               <fieldset disabled={busy}>
-                <div className="question-config">
-                  <h3>Картинка к вопросу</h3>
-                  <p className="small">
-                    PNG, JPEG, WebP или GIF · до 4 МБ. Файл хранится вместе с
-                    опросом.
-                  </p>
-                  <label className="label">
-                    Загрузить изображение
-                    <input
-                      type="file"
-                      accept="image/png,image/jpeg,image/webp,image/gif"
-                      disabled={!!uploading}
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        e.target.value = "";
-                        if (!file) return;
-                        if (file.size > 4 * 1024 * 1024) {
-                          setError("Картинка должна быть не больше 4 МБ");
-                          return;
-                        }
-                        setUploading(q.id);
-                        setError("");
-                        try {
-                          const response = await fetch("/api/images", {
-                            method: "POST",
-                            headers: { "Content-Type": file.type },
-                            body: file,
-                          });
-                          const data = await response.json();
-                          if (!response.ok)
-                            throw Error(
-                              data.error || "Не удалось загрузить файл",
-                            );
-                          setS((previous) => ({
-                            ...previous,
-                            questions: previous.questions.map((item) =>
-                              item.id === q.id
-                                ? { ...item, image: data.image }
-                                : item,
-                            ),
-                          }));
-                        } catch (error) {
-                          setError((error as Error).message);
-                        } finally {
-                          setUploading(null);
-                        }
-                      }}
-                    />
-                  </label>
-                  {uploading === q.id && (
-                    <p role="status">Загружаем картинку…</p>
-                  )}
-                  {q.image && (
-                    <>
-                      <img
-                        className="editor-image"
-                        src={q.image.src}
-                        alt={q.image.alt}
-                      />
-                      <label className="label">
-                        Описание картинки
-                        <input
-                          maxLength={300}
-                          value={q.image.alt}
-                          onChange={(e) =>
-                            question(i, {
-                              image: { ...q.image!, alt: e.target.value },
-                            })
-                          }
-                        />
-                      </label>
-                      <button
-                        type="button"
-                        className="text-button"
-                        onClick={() => question(i, { image: undefined })}
-                      >
-                        Убрать картинку
-                      </button>
-                    </>
-                  )}
-                </div>
-                <div className="question-config">
-                  <h3>Условие показа</h3>
-                  <label className="label">
-                    Показывать вопрос
-                    <select
-                      value={q.showWhen?.questionId || ""}
-                      onChange={(e) =>
-                        question(i, {
-                          showWhen: e.target.value
-                            ? {
-                                questionId: e.target.value,
-                                operator: "equals",
-                                value: "",
-                                ...(s.questions.find(
-                                  (p) => p.id === e.target.value,
-                                )?.type === "matrix"
-                                  ? {
-                                      row: s.questions.find(
-                                        (p) => p.id === e.target.value,
-                                      )?.rows[0],
-                                    }
-                                  : {}),
-                              }
-                            : undefined,
-                        })
-                      }
-                    >
-                      <option value="">Всегда</option>
-                      {q.showWhen &&
-                        !s.questions
-                          .slice(0, i)
-                          .some((p) => p.id === q.showWhen!.questionId) && (
-                          <option value={q.showWhen.questionId} disabled>
-                            Источник недоступен — выберите вопрос выше
-                          </option>
-                        )}
-                      {s.questions.slice(0, i).map((p) => (
-                        <option key={p.id} value={p.id}>
-                          Если ответ на «{p.title}»
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  {q.showWhen && (
-                    <button
-                      type="button"
-                      className="text-button"
-                      onClick={() => question(i, { showWhen: undefined })}
-                    >
-                      Убрать условие
-                    </button>
-                  )}
-                  {q.showWhen &&
-                    (() => {
-                      const parent = s.questions.find(
-                        (p) => p.id === q.showWhen!.questionId,
-                      );
-                      return (
-                        <>
-                          <label className="label">
-                            Условие
-                            <select
-                              value={q.showWhen!.operator}
-                              onChange={(e) =>
-                                question(i, {
-                                  showWhen: {
-                                    ...q.showWhen!,
-                                    operator: e.target.value as NonNullable<
-                                      Question["showWhen"]
-                                    >["operator"],
-                                  },
-                                })
-                              }
-                            >
-                              <option value="equals">
-                                Равен / выбран вариант
-                              </option>
-                              <option value="notEquals">
-                                Не равен / вариант не выбран
-                              </option>
-                              <option value="contains">Содержит</option>
-                              <option value="answered">Ответ заполнен</option>
-                            </select>
-                          </label>
-                          {parent?.type === "matrix" && (
-                            <label className="label">
-                              Строка матрицы
-                              <select
-                                value={
-                                  parent.rows.includes(q.showWhen!.row || "")
-                                    ? q.showWhen!.row
-                                    : ""
-                                }
-                                onChange={(e) =>
-                                  question(i, {
-                                    showWhen: {
-                                      ...q.showWhen!,
-                                      row: e.target.value,
-                                    },
-                                  })
-                                }
-                              >
-                                <option value="" disabled>
-                                  Выберите строку
-                                </option>
-                                {parent.rows.map((row) => (
-                                  <option key={row}>{row}</option>
-                                ))}
-                              </select>
-                            </label>
-                          )}
-                          {q.showWhen!.operator !== "answered" && (
-                            <label className="label">
-                              Ответ
-                              {parent?.type === "text" ? (
-                                <input
-                                  maxLength={3000}
-                                  value={q.showWhen!.value}
-                                  onChange={(e) =>
-                                    question(i, {
-                                      showWhen: {
-                                        ...q.showWhen!,
-                                        value: e.target.value,
-                                      },
-                                    })
-                                  }
-                                />
-                              ) : (
-                                <select
-                                  value={q.showWhen!.value}
-                                  onChange={(e) =>
-                                    question(i, {
-                                      showWhen: {
-                                        ...q.showWhen!,
-                                        value: e.target.value,
-                                      },
-                                    })
-                                  }
-                                >
-                                  <option value="">Выберите ответ</option>
-                                  {parent?.options.map((value) => (
-                                    <option key={value}>{value}</option>
-                                  ))}
-                                </select>
-                              )}
-                            </label>
-                          )}
-                          <p className="small">
-                            Вопрос появится только при выполнении условия. Можно
-                            ссылаться на любой вопрос выше; цепочки условий
-                            поддерживаются.
-                          </p>
-                        </>
-                      );
-                    })()}
-                </div>
                 <label className="label">
                   Формулировка
+                  <span>Текст вопроса, который увидит участник.</span>
                   <input
                     maxLength={300}
                     value={q.title}
@@ -490,6 +262,10 @@ export default function Editor({
                 <div className="form-grid">
                   <label className="label">
                     Тип ответа
+                    <span>
+                      Один вариант, несколько, свободный текст или оценка каждой
+                      строки в матрице.
+                    </span>
                     <select
                       value={q.type}
                       onChange={(e) =>
@@ -509,7 +285,10 @@ export default function Editor({
                     </select>
                   </label>
                   <label className="label">
-                    Подсказка
+                    Подсказка участнику
+                    <span>
+                      Краткое пояснение под вопросом: что учитывать при ответе.
+                    </span>
                     <input
                       maxLength={2000}
                       value={q.description}
@@ -529,9 +308,18 @@ export default function Editor({
                   />
                   Обязательный ответ
                 </label>
+                <p className="field-help">
+                  Без ответа нельзя перейти дальше. Если вопрос скрыт по
+                  условию, отвечать на него не нужно.
+                </p>
                 {q.type !== "text" && (
                   <label className="label">
                     Варианты ответа · каждый с новой строки
+                    <span>
+                      {q.type === "matrix"
+                        ? "Шкала оценки для всех строк, например: использовал, не использовал."
+                        : "Каждая строка станет отдельной кнопкой выбора. Не повторяйте одинаковые варианты."}
+                    </span>
                     <textarea
                       value={q.options.join("\n")}
                       onChange={(e) =>
@@ -543,6 +331,10 @@ export default function Editor({
                 {q.type === "matrix" && (
                   <label className="label">
                     Строки матрицы · каждая с новой строки
+                    <span>
+                      Объекты, которые нужно оценить отдельно: например,
+                      каталог, вебинар, поездка.
+                    </span>
                     <textarea
                       value={q.rows.join("\n")}
                       onChange={(e) =>
@@ -553,30 +345,41 @@ export default function Editor({
                 )}
                 {q.type === "multiple" && (
                   <>
-                    <label className="label">
-                      Минимум вариантов при заполнении
-                      <input
-                        type="number"
-                        min={0}
-                        max={Math.min(q.maxChoices, q.options.length)}
-                        value={q.minChoices ?? 0}
-                        onChange={(e) =>
-                          question(i, { minChoices: Number(e.target.value) })
-                        }
-                      />
-                    </label>
-                    <label className="label">
-                      Максимум вариантов
-                      <input
-                        type="number"
-                        min={1}
-                        max={100}
-                        value={q.maxChoices}
-                        onChange={(e) =>
-                          question(i, { maxChoices: Number(e.target.value) })
-                        }
-                      />
-                    </label>
+                    <div className="form-grid">
+                      <label className="label">
+                        Минимум вариантов при заполнении
+                        <span>
+                          Сколько ответов нужно выбрать перед переходом дальше.
+                          0 — без нижнего лимита.
+                        </span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={Math.min(q.maxChoices, q.options.length)}
+                          value={q.minChoices ?? 0}
+                          onChange={(e) =>
+                            question(i, { minChoices: Number(e.target.value) })
+                          }
+                        />
+                      </label>
+                      <label className="label">
+                        Максимум вариантов
+                        <span>
+                          После достижения лимита все остальные варианты
+                          блокируются. Чтобы заменить ответ, сначала снимите
+                          один из выбранных.
+                        </span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={100}
+                          value={q.maxChoices}
+                          onChange={(e) =>
+                            question(i, { maxChoices: Number(e.target.value) })
+                          }
+                        />
+                      </label>
+                    </div>
                     <p className="small">
                       Одинаковые минимум и максимум задают точное количество.
                       Минимум 0 оставляет только верхний лимит. Необязательный
@@ -588,7 +391,9 @@ export default function Editor({
                       <span>
                         {" "}
                         При выборе такого варианта остальные снимаются. Текст
-                        должен совпадать с вариантом выше.
+                        должен совпадать с вариантом выше. Например: «Ничего из
+                        перечисленного». При достигнутом максимуме сначала
+                        снимите один из ответов.
                       </span>
                       <textarea
                         value={q.exclusive.join("\n")}
@@ -603,6 +408,290 @@ export default function Editor({
                     </label>
                   </>
                 )}
+                <div className="question-extras">
+                  <details
+                    className="question-config"
+                    open={q.image ? true : undefined}
+                  >
+                    <summary>
+                      Картинка к вопросу{" "}
+                      <span>{q.image ? "Добавлена" : "Необязательно"}</span>
+                    </summary>
+                    <p className="small">
+                      PNG, JPEG, WebP или GIF · до 4 МБ. Файл хранится вместе с
+                      опросом.
+                    </p>
+                    <label className="label">
+                      Загрузить изображение
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/gif"
+                        disabled={!!uploading}
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          e.target.value = "";
+                          if (!file) return;
+                          if (file.size > 4 * 1024 * 1024) {
+                            setError("Картинка должна быть не больше 4 МБ");
+                            return;
+                          }
+                          setUploading(q.id);
+                          setError("");
+                          try {
+                            const response = await fetch("/api/images", {
+                              method: "POST",
+                              headers: { "Content-Type": file.type },
+                              body: file,
+                            });
+                            const data = await response.json();
+                            if (!response.ok)
+                              throw Error(
+                                data.error || "Не удалось загрузить файл",
+                              );
+                            setS((previous) => ({
+                              ...previous,
+                              questions: previous.questions.map((item) =>
+                                item.id === q.id
+                                  ? { ...item, image: data.image }
+                                  : item,
+                              ),
+                            }));
+                          } catch (error) {
+                            setError((error as Error).message);
+                          } finally {
+                            setUploading(null);
+                          }
+                        }}
+                      />
+                    </label>
+                    {uploading === q.id && (
+                      <p role="status">Загружаем картинку…</p>
+                    )}
+                    {q.image && (
+                      <>
+                        <img
+                          className="editor-image"
+                          src={q.image.src}
+                          alt={q.image.alt}
+                        />
+                        <label className="label">
+                          Описание картинки
+                          <span>
+                            Подпись под изображением и описание для людей,
+                            использующих экранный диктор.
+                          </span>
+                          <input
+                            maxLength={300}
+                            value={q.image.alt}
+                            onChange={(e) =>
+                              question(i, {
+                                image: { ...q.image!, alt: e.target.value },
+                              })
+                            }
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          className="text-button"
+                          onClick={() => question(i, { image: undefined })}
+                        >
+                          Убрать картинку
+                        </button>
+                      </>
+                    )}
+                  </details>
+                  <details
+                    className="question-config"
+                    open={q.showWhen ? true : undefined}
+                  >
+                    <summary>
+                      Условие показа{" "}
+                      <span>{q.showWhen ? "По ответу" : "Для всех"}</span>
+                    </summary>
+                    <p className="small">
+                      Определяет, кому будет задан этот вопрос. Например:
+                      показать «Уточните причину», только если выше выбрано
+                      «Другое».
+                    </p>
+                    {i === 0 && (
+                      <p className="small">
+                        У первого вопроса нет предыдущих ответов, поэтому он
+                        показывается всем. Чтобы настроить условие, переместите
+                        вопрос ниже.
+                      </p>
+                    )}
+                    <label className="label">
+                      Показывать вопрос
+                      <span>
+                        Выберите предыдущий вопрос, от ответа на который зависит
+                        этот.
+                      </span>
+                      <select
+                        disabled={i === 0}
+                        value={q.showWhen?.questionId || ""}
+                        onChange={(e) =>
+                          question(i, {
+                            showWhen: e.target.value
+                              ? {
+                                  questionId: e.target.value,
+                                  operator: "equals",
+                                  value: "",
+                                  ...(s.questions.find(
+                                    (p) => p.id === e.target.value,
+                                  )?.type === "matrix"
+                                    ? {
+                                        row: s.questions.find(
+                                          (p) => p.id === e.target.value,
+                                        )?.rows[0],
+                                      }
+                                    : {}),
+                                }
+                              : undefined,
+                          })
+                        }
+                      >
+                        <option value="">Всегда</option>
+                        {q.showWhen &&
+                          !s.questions
+                            .slice(0, i)
+                            .some((p) => p.id === q.showWhen!.questionId) && (
+                            <option value={q.showWhen.questionId} disabled>
+                              Источник недоступен — выберите вопрос выше
+                            </option>
+                          )}
+                        {s.questions.slice(0, i).map((p) => (
+                          <option key={p.id} value={p.id}>
+                            Если ответ на «{p.title}»
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    {q.showWhen && (
+                      <button
+                        type="button"
+                        className="text-button"
+                        onClick={() => question(i, { showWhen: undefined })}
+                      >
+                        Убрать условие
+                      </button>
+                    )}
+                    {q.showWhen &&
+                      (() => {
+                        const parent = s.questions.find(
+                          (p) => p.id === q.showWhen!.questionId,
+                        );
+                        return (
+                          <>
+                            <label className="label">
+                              Условие
+                              <span>
+                                «Выбран вариант» проверяет конкретный ответ;
+                                «Содержит» — фрагмент текста; «Ответ заполнен» —
+                                любой непустой ответ. «Не выбран» применяется
+                                после ответа на предыдущий вопрос.
+                              </span>
+                              <select
+                                value={q.showWhen!.operator}
+                                onChange={(e) =>
+                                  question(i, {
+                                    showWhen: {
+                                      ...q.showWhen!,
+                                      operator: e.target.value as NonNullable<
+                                        Question["showWhen"]
+                                      >["operator"],
+                                    },
+                                  })
+                                }
+                              >
+                                <option value="equals">
+                                  Равен / выбран вариант
+                                </option>
+                                <option value="notEquals">
+                                  Не равен / вариант не выбран
+                                </option>
+                                <option value="contains">Содержит</option>
+                                <option value="answered">Ответ заполнен</option>
+                              </select>
+                            </label>
+                            {parent?.type === "matrix" && (
+                              <label className="label">
+                                Строка матрицы
+                                <span>
+                                  Укажите, оценку какой строки нужно проверить.
+                                </span>
+                                <select
+                                  value={
+                                    parent.rows.includes(q.showWhen!.row || "")
+                                      ? q.showWhen!.row
+                                      : ""
+                                  }
+                                  onChange={(e) =>
+                                    question(i, {
+                                      showWhen: {
+                                        ...q.showWhen!,
+                                        row: e.target.value,
+                                      },
+                                    })
+                                  }
+                                >
+                                  <option value="" disabled>
+                                    Выберите строку
+                                  </option>
+                                  {parent.rows.map((row) => (
+                                    <option key={row}>{row}</option>
+                                  ))}
+                                </select>
+                              </label>
+                            )}
+                            {q.showWhen!.operator !== "answered" && (
+                              <label className="label">
+                                Ответ
+                                <span>
+                                  Значение, при котором появится этот вопрос.
+                                </span>
+                                {parent?.type === "text" ? (
+                                  <input
+                                    maxLength={3000}
+                                    value={q.showWhen!.value}
+                                    onChange={(e) =>
+                                      question(i, {
+                                        showWhen: {
+                                          ...q.showWhen!,
+                                          value: e.target.value,
+                                        },
+                                      })
+                                    }
+                                  />
+                                ) : (
+                                  <select
+                                    value={q.showWhen!.value}
+                                    onChange={(e) =>
+                                      question(i, {
+                                        showWhen: {
+                                          ...q.showWhen!,
+                                          value: e.target.value,
+                                        },
+                                      })
+                                    }
+                                  >
+                                    <option value="">Выберите ответ</option>
+                                    {parent?.options.map((value) => (
+                                      <option key={value}>{value}</option>
+                                    ))}
+                                  </select>
+                                )}
+                              </label>
+                            )}
+                            <p className="small">
+                              Вопрос появится только при выполнении условия.
+                              Можно ссылаться на любой вопрос выше; цепочки
+                              условий поддерживаются.
+                            </p>
+                          </>
+                        );
+                      })()}
+                  </details>
+                </div>
               </fieldset>
             </section>
           ))}
@@ -616,6 +705,13 @@ export default function Editor({
             ＋ Добавить вопрос
           </button>
         </>
+      ) : tab === "welcome" ? (
+        <WelcomeEditor
+          survey={s}
+          onChange={(welcome) => update({ welcome })}
+          onBusy={(value) => setUploading(value ? "welcome" : null)}
+          onError={setError}
+        />
       ) : tab === "design" ? (
         <div className="summary-card">
           <h3>Цвета опроса</h3>
@@ -671,6 +767,7 @@ export default function Editor({
             статистику.
           </div>
           <div className="preview-intro">
+            <WelcomeBlock survey={s} />
             <span className="eyebrow">ОПРОС SANEXT</span>
             <h1>{s.title}</h1>
             <p className="pre">{s.intro}</p>
