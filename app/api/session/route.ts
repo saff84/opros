@@ -1,16 +1,166 @@
-import {env} from "../../runtime";import {cookie,json,originOK,signSession,verifySession} from "../../security";import {empty,tools,barriers,needs} from "../../data";
-async function handlePost(req:Request){if(!originOK(req))return json({error:"Запрос отклонён"},403);const db=env.DB!;let id=cookie(req,"survey_id");if(!id||! /^[0-9a-f-]{36}$/.test(id))id=crypto.randomUUID();let body:any;try{body=await req.json()}catch{return json({error:"Некорректный запрос"},400)}
-if(!body||typeof body!=="object")return json({error:"Некорректный запрос"},400);
-if(body.sessionToken){const verified=await verifySession(body.sessionToken);if(!verified)return json({error:"Сессия не подтверждена. Обновите страницу, чтобы восстановить черновик."},403);id=verified}
-const now=new Date().toISOString();const existing:any=await db.prepare("SELECT * FROM responses WHERE id=?").bind(id).first();const header={"Set-Cookie":`survey_id=${id}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=31536000`};
-if(body.action==="start"){if(!existing)await db.prepare("INSERT INTO responses (id,created,updated,status,name,answers) VALUES (?,?,?,?,?,?)").bind(id,now,now,"visited","",JSON.stringify(empty)).run();return json({id,sessionToken:await signSession(id),answers:existing?JSON.parse(existing.answers):empty,name:existing?.name||"",status:existing?.status||"visited",updated:existing?.updated||now},200,header)}
-if(!existing)return json({error:"Откройте опрос заново"},400);if(existing.status==="completed")return json({error:"Ответ уже отправлен"},409);
-const a=body.answers;const specials=["Использовал, но заметной пользы не получил","Пока сложно оценить пользу","Не использовал инструменты"];
-if(!a||typeof a.usage!=="object"||Array.isArray(a.usage)||!a.usage)return json({error:"Некорректные ответы"},400);
-const validList=(v:any,allowed:string[],exclusive:string[])=>Array.isArray(v)&&v.length<=3&&new Set(v).size===v.length&&v.every((x:any)=>allowed.includes(x))&&(!v.some((x:any)=>exclusive.includes(x))||v.length===1);
-if(Object.entries(a.usage).some(([k,v])=>!tools.includes(k)||!Number.isInteger(v)||Number(v)<0||Number(v)>4)||!validList(a.benefit,[...tools,...specials],specials)||a.benefit.some((x:string)=>tools.includes(x)&&!(a.usage[x]===0||a.usage[x]===1))||!validList(a.barriers,barriers,["Ничего не мешает"])||!validList(a.needs,needs,["Поддержки достаточно"])||![a.barrierOther,a.improve,a.needOther,...(Array.isArray(a.ideas)?a.ideas:[])].every(x=>typeof x==="string"&&x.length<=3000)||!Array.isArray(a.ideas)||a.ideas.length!==3||typeof body.name!=="string"||body.name.length>120)return json({error:"Проверьте формат и ограничения ответов"},400);
-if(body.action==="submit"&&(Object.keys(a.usage).length!==tools.length||!a.benefit.length||!a.barriers.length||!a.needs.length||(a.barriers.includes("Другое")&&!a.barrierOther.trim())||(a.needs.includes("Другое")&&!a.needOther.trim())||a.ideas.some((x:string)=>!x.trim())))return json({error:"Заполните обязательные вопросы"},400);
-if(!["save","submit"].includes(body.action))return json({error:"Неизвестное действие"},400);
-await db.prepare("UPDATE responses SET updated=?,status=?,name=?,answers=? WHERE id=?").bind(now,body.action==="submit"?"completed":"draft",body.name.trim(),JSON.stringify(a),id).run();return json({ok:true,id},200,header)}
-
-export async function POST(req:Request){try{return await handlePost(req)}catch(error){console.error("Survey save failed",error instanceof Error?error.message:"Unknown error");return json({error:"Не удалось сохранить ответы на сервере. Повторите попытку; черновик остаётся на устройстве."},503)}}
+﻿import { sanitizeAnswers } from "../../branching";
+import { getDatabase, getSurvey, getSurveyVersion } from "../../runtime";
+import {
+  json,
+  originOK,
+  readBody,
+  verifySession,
+  verifyPreviousSession,
+  verifyLegacySession,
+  signSession,
+  rateLimit,
+} from "../../security";
+import { emptyAnswers, validateAnswers, AnswerMap } from "../../survey-model";
+export async function POST(req: Request) {
+  try {
+    if (!originOK(req)) return json({ error: "Запрос отклонён" }, 403);
+    let body;
+    try {
+      body = await readBody(req);
+    } catch {
+      return json({ error: "Некорректный запрос" }, 400);
+    }
+    if (
+      !body ||
+      !["start", "save", "submit"].includes(body.action) ||
+      typeof body.surveyId !== "string"
+    )
+      return json({ error: "Некорректный запрос" }, 400);
+    const s = getSurvey(body.surveyId);
+    if (!s || s.status !== "active")
+      return json({ error: "Этот опрос не принимает ответы" }, 410);
+    const db = getDatabase();
+    let id = await verifySession(body.sessionToken, s.id);
+    if (!id) id = await verifyPreviousSession(body.sessionToken, s.id);
+    if (!id && s.id === "legacy")
+      id = await verifyLegacySession(body.sessionToken);
+    const latest = getSurvey(s.id);
+    if (!latest || latest.status !== "active")
+      return json({ error: "Этот опрос не принимает ответы" }, 410);
+    if (latest.revision !== s.revision)
+      return json(
+        { error: "Опрос обновлён. Обновите страницу.", code: "SURVEY_UPDATED" },
+        409,
+      );
+    if (body.sessionToken && !id)
+      return json(
+        {
+          error:
+            "Сессия устарела. Создайте новую сессию, сохранив локальный черновик.",
+          code: "SESSION_EXPIRED",
+        },
+        403,
+      );
+    if (body.action === "start") {
+      if (!id) {
+        if (!rateLimit("new-session", 300, 3600_000))
+          return json({ error: "Лимит новых сессий. Попробуйте позже." }, 429);
+        id = crypto.randomUUID();
+      }
+      const previous = db
+        .prepare("SELECT * FROM entries WHERE id=? AND survey_id=?")
+        .get(id, s.id) as any;
+      const version = s.schemaVersion || 1;
+      let initial = emptyAnswers(s),
+        initialName = "";
+      if (previous && previous.schema_version !== version) {
+        const old = getSurveyVersion(s.id, previous.schema_version);
+        const values = JSON.parse(previous.answers) as AnswerMap;
+        for (const q of s.questions) {
+          const before = old?.questions.find((x) => x.id === q.id);
+          if (
+            before &&
+            JSON.stringify(before) === JSON.stringify(q) &&
+            values[q.id] !== undefined
+          )
+            initial[q.id] = values[q.id];
+        }
+        initialName = previous.name;
+        if (!rateLimit("new-session", 300, 3600_000))
+          return json({ error: "Лимит новых сессий. Попробуйте позже." }, 429);
+        id = crypto.randomUUID();
+      }
+      const now = new Date().toISOString();
+      db.prepare(
+        "INSERT OR IGNORE INTO entries (id,survey_id,created,updated,status,name,answers,schema_version) VALUES (?,?,?,?,?,?,?,?)",
+      ).run(
+        id,
+        s.id,
+        now,
+        now,
+        previous && previous.schema_version !== version ? "draft" : "visited",
+        initialName,
+        JSON.stringify(sanitizeAnswers(s, initial)),
+        version,
+      );
+      const row = db
+        .prepare("SELECT * FROM entries WHERE id=? AND survey_id=?")
+        .get(id, s.id) as any;
+      return json({
+        id,
+        sessionToken: await signSession(id, s.id),
+        answers: JSON.parse(row.answers),
+        name: row.name,
+        status: row.status,
+        updated: row.updated,
+      });
+    }
+    if (!id) return json({ error: "Требуется подтверждённая сессия" }, 403);
+    if (!rateLimit("save:" + id, 180, 60_000))
+      return json({ error: "Слишком много запросов. Подождите минуту." }, 429);
+    if (body.revision !== s.revision)
+      return json(
+        { error: "Опрос обновлён. Обновите страницу.", code: "SURVEY_UPDATED" },
+        409,
+      );
+    if (typeof body.name !== "string" || body.name.length > 120)
+      return json({ error: "Имя должно быть не длиннее 120 символов" }, 400);
+    const error = validateAnswers(s, body.answers, body.action === "submit");
+    if (error) return json({ error }, 400);
+    const result = db
+      .prepare(
+        "UPDATE entries SET updated=?,status=?,name=?,answers=? WHERE id=? AND survey_id=? AND status!='completed' AND schema_version=?",
+      )
+      .run(
+        new Date().toISOString(),
+        body.action === "submit" ? "completed" : "draft",
+        body.name.trim(),
+        JSON.stringify(sanitizeAnswers(s, body.answers)),
+        id,
+        s.id,
+        s.schemaVersion || 1,
+      );
+    const entryVersion = db
+      .prepare("SELECT schema_version FROM entries WHERE id=? AND survey_id=?")
+      .get(id, s.id) as { schema_version: number } | undefined;
+    if (entryVersion && entryVersion.schema_version !== (s.schemaVersion || 1))
+      return json(
+        {
+          error: "Вопросы изменились. Обновите страницу.",
+          code: "SURVEY_UPDATED",
+        },
+        409,
+      );
+    if (!result.changes) {
+      const existing = db
+        .prepare("SELECT status FROM entries WHERE id=? AND survey_id=?")
+        .get(id, s.id);
+      return json(
+        {
+          error: existing ? "Ответ уже отправлен" : "Откройте опрос заново",
+          code: existing ? "COMPLETED" : "MISSING_SESSION",
+        },
+        409,
+      );
+    }
+    return json({ ok: true, id });
+  } catch (error) {
+    console.error("Survey request failed", error);
+    return json(
+      {
+        error: "Не удалось сохранить ответы. Черновик остаётся на устройстве.",
+      },
+      503,
+    );
+  }
+}
