@@ -17,7 +17,8 @@ import type { SurveyEvent } from "../funnel";
 import type { AdminIdentity } from "../security";
 import { builtInTemplates, templateSurvey } from "../templates";
 import { legacySurvey } from "../survey-model";
-import { downloadPdf } from "../pdf-report";
+import { downloadPdf, downloadParticipantPdf } from "../pdf-report";
+import { otherResponses } from "../other-responses";
 import { isSurveyOpen } from "../../scripts/survey-features.mjs";
 import { announceSurveyUpdate } from "../live-survey";
 type Listed = Survey & { total: number; completed: number };
@@ -902,7 +903,16 @@ export default function Results() {
                     rows={rows}
                     surveys={surveys}
                   />
-                  <Report survey={selected} rows={reportRows} />
+                  <Report
+                    survey={selected}
+                    rows={reportRows}
+                    onParticipant={(id) => {
+                      setParticipant(id);
+                      setSearch("");
+                      setScope("all");
+                      setView("participants");
+                    }}
+                  />
                 </>
               ) : (
                 <>
@@ -974,6 +984,21 @@ export default function Results() {
                               "Участник " + current.id.slice(0, 8)}
                           </h2>
                           <p className="small">ID: {current.id}</p>
+                          <p>
+                            Отдел: {current.department || "Не указан"} · Регион:{" "}
+                            {current.region || "Не указан"}
+                          </p>
+                          <button
+                            className="secondary"
+                            onClick={() =>
+                              void downloadParticipantPdf(
+                                selected,
+                                current,
+                              ).catch((e) => setError(e.message))
+                            }
+                          >
+                            Скачать анкету участника PDF
+                          </button>
                           {selected.questions.map((q, i) => (
                             <section className="answer" key={q.id}>
                               <h3>
@@ -984,10 +1009,20 @@ export default function Results() {
                                   selected,
                                   current.answers,
                                 ).some((item) => item.id === q.id)
-                                  ? answerText(q, current.answers) ||
-                                    "Нет ответа"
+                                  ? answerText(
+                                      { ...q, otherOption: undefined },
+                                      current.answers,
+                                    ) || "Нет ответа"
                                   : "Не показывался по условию"}
                               </p>
+                              {otherResponses(selected, q, [current]).map(
+                                ({ text }) => (
+                                  <div className="note pre" key={q.id}>
+                                    <strong>Уточнение «{q.otherOption}»</strong>
+                                    <p>{text}</p>
+                                  </div>
+                                ),
+                              )}
                             </section>
                           ))}
                         </>

@@ -3,6 +3,7 @@ import { visibleQuestions } from "./branching";
 import { Survey, Entry } from "./survey-model";
 import { answerText } from "./question-input";
 import { summaryTable } from "./statistics";
+import { otherResponseTable, otherResponses } from "./other-responses";
 export function download(data: BlobPart, type: string, name: string) {
   const url = URL.createObjectURL(new Blob([data], { type }));
   const a = document.createElement("a");
@@ -39,6 +40,9 @@ export function responseTable(s: Survey, rows: Entry[]): string[][] {
       "Отдел",
       "Регион",
       ...s.questions.map((q) => q.title),
+      ...s.questions
+        .filter((q) => q.otherOption)
+        .map((q) => q.title + " — уточнение «" + q.otherOption + "»"),
     ],
     ...rows.map((r) => {
       const visible = new Set(visibleQuestions(s, r.answers).map((q) => q.id));
@@ -61,6 +65,9 @@ export function responseTable(s: Survey, rows: Entry[]): string[][] {
             ? answerText(q, r.answers)
             : "Не показывался по условию",
         ),
+        ...s.questions
+          .filter((q) => q.otherOption)
+          .map((q) => otherResponses(s, q, [r])[0]?.text || ""),
       ];
     }),
   ];
@@ -140,7 +147,11 @@ function column(i: number): string {
     : column(Math.floor(i / 26) - 1) + String.fromCharCode(65 + (i % 26));
 }
 export function workbook(s: Survey, rows: Entry[]) {
-  const sheets = [responseTable(s, rows), summaryTable(s, rows)];
+  const sheets = [
+    responseTable(s, rows),
+    summaryTable(s, rows),
+    otherResponseTable(s, rows),
+  ];
   const files: Record<string, string> = {
     "[Content_Types].xml":
       '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
@@ -154,7 +165,7 @@ export function workbook(s: Survey, rows: Entry[]) {
     "_rels/.rels":
       '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>',
     "xl/workbook.xml":
-      '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Ответы" sheetId="1" r:id="rId1"/><sheet name="Статистика" sheetId="2" r:id="rId2"/></sheets></workbook>',
+      '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Ответы" sheetId="1" r:id="rId1"/><sheet name="Статистика" sheetId="2" r:id="rId2"/><sheet name="Уточнения Другое" sheetId="3" r:id="rId3"/></sheets></workbook>',
     "xl/_rels/workbook.xml.rels":
       '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
       sheets

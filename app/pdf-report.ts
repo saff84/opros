@@ -9,6 +9,7 @@ import {
 import { visibleQuestions } from "./branching";
 import { answerText } from "./question-input";
 import { download } from "./exports";
+import { otherResponses } from "./other-responses";
 export function reportDocument(
   s: Survey,
   rows: Entry[],
@@ -129,10 +130,7 @@ export function reportDocument(
         );
       }
     if (q.otherOption) {
-      const extra = stats.base
-        .map((r) => r.answers[q.id + "__other"])
-        .filter((v) => typeof v === "string" && v.trim())
-        .slice(0, 50);
+      const extra = otherResponses(s, q, eligible);
       if (extra.length)
         content.push(
           {
@@ -141,9 +139,9 @@ export function reportDocument(
             margin: [0, 10, 0, 4],
           },
           ...extra.map(
-            (text) =>
+            ({ entry, text }) =>
               ({
-                text: String(text),
+                text: `${entry.name || "Участник " + entry.id.slice(0, 8)}${entry.department ? " · " + entry.department : ""}${entry.region ? " · " + entry.region : ""}\n${text}`,
                 fontSize: 10,
                 margin: [0, 0, 0, 5],
               }) as Content,
@@ -170,16 +168,55 @@ export function reportDocument(
   };
 }
 export async function downloadPdf(s: Survey, rows: Entry[], filters: string) {
+  await savePdf(
+    reportDocument(s, rows, filters),
+    `SANEXT-${s.id.slice(0, 12)}-v${s.schemaVersion || 1}.pdf`,
+  );
+}
+export function participantDocument(
+  s: Survey,
+  entry: Entry,
+): TDocumentDefinitions {
+  const doc = reportDocument(s, [], "Индивидуальная анкета");
+  const visible = new Set(visibleQuestions(s, entry.answers).map((q) => q.id));
+  doc.content = [
+    { text: s.title, style: "title" },
+    {
+      text: entry.name || "Участник " + entry.id.slice(0, 8),
+      style: "heading",
+    },
+    {
+      text: `ID: ${entry.id}\nОтдел: ${entry.department || "Не указан"}\nРегион: ${entry.region || "Не указан"}\nВерсия: ${s.schemaVersion || 1}\nСтатус: ${{ visited: "Зашёл", draft: "Черновик", completed: "Отправлен" }[entry.status]}\nОбновлено (UTC): ${entry.updated}`,
+    },
+    ...s.questions.flatMap((q) => [
+      { text: q.title, style: "heading" },
+      {
+        text: visible.has(q.id)
+          ? answerText({ ...q, otherOption: undefined }, entry.answers) ||
+            "Нет ответа"
+          : "Не показывался по условию",
+      },
+      ...otherResponses(s, q, [entry]).map(({ text }) => ({
+        text: `Уточнение «${q.otherOption}»: ${text}`,
+        margin: [0, 6, 0, 6] as [number, number, number, number],
+      })),
+    ]),
+  ];
+  return doc;
+}
+export async function downloadParticipantPdf(s: Survey, entry: Entry) {
+  await savePdf(
+    participantDocument(s, entry),
+    `SANEXT-${s.id.slice(0, 12)}-${entry.id.slice(0, 12)}.pdf`,
+  );
+}
+async function savePdf(doc: TDocumentDefinitions, filename: string) {
   const [pdfModule, fontModule] = await Promise.all([
     import("pdfmake/build/pdfmake"),
     import("pdfmake/build/vfs_fonts"),
   ]);
   const pdf = pdfModule.default;
   pdf.addVirtualFileSystem(fontModule.default);
-  const blob = await pdf.createPdf(reportDocument(s, rows, filters)).getBlob();
-  download(
-    blob,
-    "application/pdf",
-    `SANEXT-${s.id.slice(0, 12)}-v${s.schemaVersion || 1}.pdf`,
-  );
+  const blob = await pdf.createPdf(doc).getBlob();
+  download(blob, "application/pdf", filename);
 }

@@ -11,6 +11,7 @@ import {
   rankingStats,
 } from "../statistics";
 import { answerText, QuestionImage } from "../question-input";
+import { otherResponses } from "../other-responses";
 export const colors = [
   "#004ecc",
   "#ff773f",
@@ -25,9 +26,11 @@ export const percent = (n: number) =>
 export default function Report({
   survey: s,
   rows,
+  onParticipant,
 }: {
   survey: Survey;
   rows: Entry[];
+  onParticipant?: (id: string) => void;
 }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const visibility = new Map(
@@ -294,6 +297,34 @@ export default function Report({
                     ? " Доли рассчитаны отдельно для каждой строки."
                     : ""}
               </p>
+              {q.otherOption && (
+                <div className="other-responses">
+                  <h4>Уточнения «{q.otherOption}»</h4>
+                  <p className="small">
+                    Выбор варианта учитывается в диаграмме выше. Введённые
+                    участниками пояснения приведены отдельно.
+                  </p>
+                  {otherResponses(s, q, eligible).length ? (
+                    otherResponses(s, q, eligible).map(({ entry: r, text }) => (
+                      <div className="feedback" key={r.id}>
+                        <button
+                          type="button"
+                          className="text-button"
+                          onClick={() => onParticipant?.(r.id)}
+                        >
+                          {r.name || "Участник " + r.id.slice(0, 8)}
+                        </button>
+                        <p className="small">
+                          {[r.department, r.region].filter(Boolean).join(" · ")}
+                        </p>
+                        <p className="pre">{text}</p>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="small">Заполненных уточнений нет.</p>
+                  )}
+                </div>
+              )}
             </section>
           );
         })}
