@@ -1,0 +1,66 @@
+{
+  "format": "sanext-questions",
+  "version": 1,
+  "title": "Пример всех типов вопросов",
+  "questions": [
+    {
+      "id": "experience",
+      "title": "Пользовались ли вы нашим сервисом?",
+      "type": "single",
+      "description": "Выберите один вариант.",
+      "options": ["Да", "Нет", "Другое"],
+      "otherOption": "Другое"
+    },
+    {
+      "id": "details",
+      "title": "Расскажите о вашем опыте",
+      "type": "text",
+      "required": false,
+      "startNewPage": false,
+      "showWhen": { "questionId": "experience", "operator": "equals", "value": "Да" }
+    },
+    {
+      "id": "priorities",
+      "title": "Выберите от двух до трёх направлений или вариант «Ничего»",
+      "type": "multiple",
+      "options": ["Качество", "Скорость", "Цена", "Поддержка", "Другое", "Ничего"],
+      "minChoices": 2,
+      "maxChoices": 3,
+      "exclusive": ["Ничего"],
+      "otherOption": "Другое",
+      "startNewPage": true
+    },
+    {
+      "id": "matrix",
+      "title": "Оцените аспекты работы",
+      "type": "matrix",
+      "rows": ["Доставка", "Консультация"],
+      "options": ["Плохо", "Нормально", "Хорошо", "Не могу оценить"]
+    },
+    {
+      "id": "delivery_comment",
+      "title": "Что улучшить в доставке?",
+      "type": "text",
+      "startNewPage": false,
+      "showWhen": { "questionId": "matrix", "row": "Доставка", "operator": "equals", "value": "Плохо" }
+    },
+    { "id": "rating", "title": "Общая оценка от 1 до 10", "type": "rating" },
+    { "id": "stars", "title": "Оценка от 1 до 5 звёзд", "type": "stars", "startNewPage": false },
+    { "id": "nps", "title": "Порекомендуете ли вы нас? От 0 до 10", "type": "nps" },
+    {
+      "id": "ranking",
+      "title": "Расположите направления по важности",
+      "type": "ranking",
+      "options": ["Качество", "Скорость", "Цена"]
+    },
+    {
+      "id": "visual",
+      "title": "Какой вариант вам нравится?",
+      "description": "Изображения к вариантам загрузите в редакторе после импорта.",
+      "type": "image",
+      "options": ["Вариант А", "Вариант Б", "Другое"],
+      "otherOption": "Другое",
+      "required": false
+    }
+  ]
+}

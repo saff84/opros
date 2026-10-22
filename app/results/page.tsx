@@ -1,7 +1,8 @@
 ﻿"use client";
 import PasswordSettings from "./password-settings";
 import { visibleQuestions } from "../branching";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { importQuestions, MAX_QUESTION_IMPORT_BYTES } from "../question-import";
 import Brand from "../brand";
 import { apiJson, ApiError } from "../api-client";
 import { Survey, Entry } from "../survey-model";
@@ -33,6 +34,23 @@ const entryStatuses = {
   completed: "Отправил",
 };
 export default function Results() {
+  const importInput = useRef<HTMLInputElement>(null);
+  async function loadQuestions(file?: File) {
+    if (!file || !canWrite || busy) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      if (file.size > MAX_QUESTION_IMPORT_BYTES)
+        throw Error("Файл слишком большой. Максимальный размер — 90 КБ.");
+      const survey = importQuestions(await file.text());
+      setEdit({ survey, create: true });
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
   const [auth, setAuth] = useState(false),
     [username, setUsername] = useState(""),
     [identity, setIdentity] = useState<AdminIdentity | null>(null),
@@ -395,6 +413,22 @@ export default function Results() {
                 </p>
               </div>
               <div className="actions">
+                <input
+                  ref={importInput}
+                  type="file"
+                  accept=".json,application/json"
+                  aria-label="Файл вопросов JSON"
+                  hidden
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    void loadQuestions(file);
+                  }}
+                />
+                <button disabled={!canWrite || busy} onClick={() => importInput.current?.click()}>
+                  Загрузить вопросы
+                </button>
+                <a href="/templates/questions-example.json" download>Скачать шаблон JSON</a>
                 <select
                   aria-label="Создать из шаблона"
                   disabled={!canWrite || busy}
