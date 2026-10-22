@@ -2151,6 +2151,48 @@ input[type="color"] {
 .scale-options .check {
   display: none;
 }
+.number-options .scale-step.filled {
+  background: var(--cyan);
+  border-color: var(--cyan);
+  color: #fff;
+}
+.scale-options .scale-step.selected {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+}
+.star-options {
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  gap: 4px;
+}
+.star-options .scale-step {
+  flex: 0 1 52px;
+  min-width: 40px;
+  padding: 6px;
+  border-color: transparent;
+  background: transparent;
+}
+.star-options .scale-step svg {
+  width: 36px;
+  height: 36px;
+  fill: transparent;
+  stroke: #777;
+  stroke-width: 1.5;
+  transition: fill 120ms ease, stroke 120ms ease;
+}
+.star-options .scale-step.filled svg {
+  fill: var(--orange, #ff773f);
+  stroke: var(--orange, #ff773f);
+}
+.star-options .scale-step.selected {
+  background: transparent;
+  outline-color: var(--orange, #ff773f);
+  border-color: transparent;
+}
+.scale-options .scale-step:focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: 3px;
+}
 .choice-image {
   width: 100px;
   height: 80px;

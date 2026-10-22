@@ -2,6 +2,7 @@
 import { isAdmin, json } from "../../../security";
 import { surveyImageSources } from "../../../../scripts/welcome.mjs";
 import { isSurveyOpen } from "../../../../scripts/survey-features.mjs";
+import { previewSurvey } from "../../../preview-access";
 export async function GET(
   req: Request,
   context: { params: Promise<{ id: string }> },
@@ -24,7 +25,9 @@ export async function GET(
       const s = JSON.parse(r.definition);
       return isSurveyOpen(s) && surveyImageSources(s).includes(src);
     });
-    if (!referenced) return json({ error: "Картинка не найдена" }, 404);
+    const preview = previewSurvey(new URL(req.url).searchParams.get("preview"));
+    if (!referenced && (!preview || !surveyImageSources(preview).includes(src)))
+      return json({ error: "Картинка не найдена" }, 404);
   }
   if (new URL(req.url).searchParams.get("format") === "json") {
     if (!admin) return json({ error: "Требуется вход" }, 401);

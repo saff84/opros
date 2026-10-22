@@ -11,6 +11,7 @@ import Report, { percent } from "./report";
 import { answerText } from "../question-input";
 import { exportResults } from "../exports";
 import Share from "./share";
+import PreviewLink from "./preview-link";
 import FunnelPanel from "./funnel-panel";
 import Comparison from "./comparison";
 import SystemSettings from "./system-settings";
@@ -786,6 +787,7 @@ export default function Results() {
                 </button>
               </div>
               <div className="report-controls no-print">
+                {canWrite && <PreviewLink key={(currentSurvey || selected).id} surveyId={(currentSurvey || selected).id} />}
                 <Share survey={currentSurvey || selected} />
                 {canWrite && (
                   <button

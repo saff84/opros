@@ -30,6 +30,7 @@ export function getDatabase() {
   db.exec(
     "CREATE TABLE IF NOT EXISTS survey_versions (survey_id TEXT NOT NULL REFERENCES surveys(id), version INTEGER NOT NULL, definition TEXT NOT NULL, PRIMARY KEY(survey_id,version))",
   );
+  db.exec("CREATE TABLE IF NOT EXISTS survey_preview_links (survey_id TEXT PRIMARY KEY REFERENCES surveys(id),token_hash TEXT UNIQUE NOT NULL,expires INTEGER NOT NULL)");
   db.exec("BEGIN IMMEDIATE");
   try {
     if (process.env.ADMIN_PASSWORD && process.env.ADMIN_PASSWORD.length >= 16)

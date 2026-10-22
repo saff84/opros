@@ -17,6 +17,7 @@ import { publicationCheck } from "../publication";
 import { pageAnswerError } from "../survey-pages";
 import { otherKey } from "../../scripts/survey-features.mjs";
 import ExtendedQuestion from "./extended-question";
+import PreviewLink from "./preview-link";
 function localDate(value?: string) {
   if (!value) return "";
   const d = new Date(value);
@@ -1026,6 +1027,7 @@ export default function Editor({
               Телефон · 390 px
             </button>
           </div>
+          {s.id && <PreviewLink surveyId={s.id} />}
           <div className={"preview-frame preview-" + device} style={theme(s)}>
             <div className="note">
               Предпросмотр. Ответы здесь не сохраняются и не попадают в

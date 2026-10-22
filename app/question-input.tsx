@@ -143,6 +143,30 @@ function AnswerInput({
         </div>
       </div>
     );
+  if (["rating", "stars", "nps"].includes(q.type)) {
+    const stars = q.type === "stars";
+    const selectedIndex = q.options.indexOf(typeof value === "string" ? value : "");
+    return (
+      <div>
+        <p className="small">{stars ? "Выберите количество звёзд" : "Выберите оценку"}</p>
+        <div className={"options scale-options " + (stars ? "star-options" : "number-options")}
+          role="group" aria-label={q.title}>
+          {q.options.map((option, index) => (
+            <button type="button" key={option} disabled={disabled}
+              className={"option scale-step" + (index <= selectedIndex ? " filled" : "") + (index === selectedIndex ? " selected" : "")}
+              aria-label={stars ? `${option} из ${q.options.length} звёзд` : option}
+              aria-pressed={index === selectedIndex}
+              onClick={() => onChange(value === option ? "" : option)}>
+              {stars ? <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01Z" /></svg> : option}
+            </button>
+          ))}
+        </div>
+        <p className="small" role="status" aria-live="polite">
+          {selectedIndex >= 0 ? `Оценка: ${value} из ${q.options[q.options.length - 1]}` : "Оценка не выбрана"}
+        </p>
+      </div>
+    );
+  }
   return (
     <>
       <p className="small">
@@ -200,7 +224,7 @@ function AnswerInput({
                   alt={q.optionImages[o].alt}
                 />
               )}
-              {q.type === "stars" ? `${o} ${"★".repeat(Number(o))}` : o}
+              {o}
             </button>
           );
         })}
