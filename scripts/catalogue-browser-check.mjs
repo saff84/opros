@@ -27,6 +27,7 @@ export async function runCatalogueBrowserChecks({ origin, password }) {
       .getByRole("button", { name: "Редактировать", exact: true }).click();
     await admin.getByRole("button", { name: "Вопросы и тексты", exact: true }).click();
     await admin.getByLabel("Title страницы · заголовок вкладки браузера").fill("Title опроса " + suffix);
+    await admin.getByLabel("Meta description · описание страницы опроса").fill("Описание опроса " + suffix);
     await admin.getByText("Обложка в списке опросов", { exact: true }).click();
     await admin.getByLabel("Загрузить обложку", { exact: false }).setInputFiles({ name: "cover.png", mimeType: "image/png",
       buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1cAAAAASUVORK5CYII=", "base64") });
@@ -39,8 +40,9 @@ export async function runCatalogueBrowserChecks({ origin, password }) {
     await post("/api/team", { username, password: "browser-viewer-password", role: "viewer", surveyIds: [] });
     await admin.getByRole("button", { name: "Доступ и резервные копии", exact: true }).click();
     await admin.getByLabel("Title страницы · заголовок вкладки браузера").fill("Главная " + suffix);
-    await admin.getByRole("button", { name: "Сохранить title", exact: true }).click();
-    await expect(admin.getByRole("status").filter({ hasText: "Заголовок главной страницы сохранён" })).toBeVisible();
+    await admin.getByLabel("Meta description · описание главной страницы").fill("Описание главной " + suffix);
+    await admin.getByRole("button", { name: "Сохранить title и описание", exact: true }).click();
+    await expect(admin.getByRole("status").filter({ hasText: "Заголовок и описание главной страницы сохранены" })).toBeVisible();
     await expect.poll(async () => (await (await adminContext.request.get("/api/site-settings")).json()).pageTitle).toBe("Главная " + suffix);
     const row = admin.getByRole("row").filter({ has: admin.getByRole("cell", { name: username, exact: true }) });
     await row.getByLabel(s.title, { exact: true }).check();
@@ -50,6 +52,7 @@ export async function runCatalogueBrowserChecks({ origin, password }) {
     participant.on("pageerror", e => errors.push(e.message));
     await participant.goto("/");
     await expect(participant).toHaveTitle("Главная " + suffix);
+    await expect(participant.locator('meta[name="description"]')).toHaveAttribute("content", "Описание главной " + suffix);
     const card = participant.locator("a.survey-card").filter({ has: participant.getByRole("heading", { name: s.title, exact: true }) });
     await expect(card).toBeVisible();
     await expect(participant.getByRole("heading", { name: hidden.title, exact: true })).toHaveCount(0);
@@ -58,6 +61,7 @@ export async function runCatalogueBrowserChecks({ origin, password }) {
     expect(await participant.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
     await card.click();
     await expect(participant).toHaveTitle("Title опроса " + suffix);
+    await expect(participant.locator('meta[name="description"]')).toHaveAttribute("content", "Описание опроса " + suffix);
     await participant.goto("/?survey=" + hidden.id);
     await expect(participant).toHaveTitle(hidden.pageTitle);
     const viewer = await viewerContext.newPage();

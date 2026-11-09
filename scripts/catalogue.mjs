@@ -1,4 +1,5 @@
 export function validCatalogue(s) {
+  if (s.pageDescription !== undefined && (typeof s.pageDescription !== "string" || s.pageDescription.length > 1000)) return false;
   if (s.pageTitle !== undefined && (typeof s.pageTitle !== "string" || s.pageTitle.length > 160)) return false;
   if (s.unlisted !== undefined && typeof s.unlisted !== "boolean") return false;
   const c = s.cover;

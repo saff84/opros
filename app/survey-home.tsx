@@ -19,7 +19,7 @@ import { otherKey } from "../scripts/survey-features.mjs";
 import { SurveyChooser } from "./survey-list";
 import { tools } from "./data";
 import { recoverCompatibleAnswers } from "./live-survey";
-export default function Home({ homeTitle }: { homeTitle: string }) {
+export default function Home({ homeTitle, homeDescription }: { homeTitle: string; homeDescription: string }) {
   const [surveys, setSurveys] = useState<Survey[]>([]),
     [survey, setSurvey] = useState<Survey | null>(null),
     [error, setError] = useState(""),
@@ -28,6 +28,11 @@ export default function Home({ homeTitle }: { homeTitle: string }) {
   useEffect(() => {
     document.title = survey ? survey.pageTitle?.trim() || `${survey.title} · SANEXT` : homeTitle;
   }, [survey, homeTitle]);
+  useEffect(() => {
+    let meta = document.querySelector<HTMLMetaElement>('meta[name="description"]');
+    if (!meta) { meta = document.createElement("meta"); meta.name = "description"; document.head.appendChild(meta); }
+    meta.content = survey ? survey.pageDescription?.trim() || survey.description : homeDescription;
+  }, [survey, homeDescription]);
   useEffect(() => {
     let selectedId = new URLSearchParams(location.search).get("survey"),
       previous: Survey | null = null,

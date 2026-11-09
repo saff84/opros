@@ -159,7 +159,7 @@ test("Home and individual survey page titles persist, render in metadata and res
 });
 test("Portable JSON retains cover image, visibility and page title; invalid cover is rejected", async () => {
   const cover = { ...await upload(), fit: "contain", position: "bottom" };
-  const s = await create({ cover, unlisted: true, pageTitle: "Переносимый заголовок" });
+  const s = await create({ cover, unlisted: true, pageTitle: "Переносимый заголовок", pageDescription: "Переносимое описание" });
   const bundled = await ok(getImage(cover.src, owner, "?format=json"));
   const id = crypto.randomUUID();
   const fixture = { version: 2, survey: { ...s, id }, rows: [], images: [bundled] };
@@ -170,10 +170,32 @@ test("Portable JSON retains cover image, visibility and page title; invalid cove
   assert.deepEqual(runtime.getSurvey(id).cover, cover);
   assert.equal(runtime.getSurvey(id).unlisted, true);
   assert.equal(runtime.getSurvey(id).pageTitle, s.pageTitle);
+  assert.equal(runtime.getSurvey(id).pageDescription, s.pageDescription);
   fixture.survey.id = crypto.randomUUID();
   fixture.survey.cover.src = "https://external.test/image.png";
   writeFileSync(file, JSON.stringify(fixture));
   const invalid = spawnSync(process.execPath, ["scripts/import-responses.mjs", file], { encoding: "utf8", env: process.env });
   assert.notEqual(invalid.status, 0);
   assert.equal(runtime.getSurvey(fixture.survey.id), null);
+});
+test("Meta descriptions persist and render separately for the catalogue and surveys", async () => {
+  const settings = require("../app/api/site-settings/route.ts");
+  const { generateMetadata } = require("../app/page.tsx");
+  const titles = require("../app/page-titles.ts");
+  await ok(settings.POST(req("/api/site-settings", { pageTitle: "Главная", pageDescription: "Описание главной" })));
+  assert.equal((await ok(settings.GET())).pageDescription, "Описание главной");
+  assert.equal((await generateMetadata({ searchParams: Promise.resolve({}) })).description, "Описание главной");
+  const s = await create({ pageDescription: "Описание для поисковика", description: "Подзаголовок карточки" });
+  assert.equal((await generateMetadata({ searchParams: Promise.resolve({ survey: s.id }) })).description, s.pageDescription);
+  const updated = (await ok(surveys.POST(req("/api/surveys", { survey: { ...s, pageDescription: "" } })))).survey;
+  assert.equal(updated.schemaVersion, s.schemaVersion);
+  assert.equal((await generateMetadata({ searchParams: Promise.resolve({ survey: s.id }) })).description, s.description);
+  await ok(settings.POST(req("/api/site-settings", { pageTitle: "Не сохранять", pageDescription: "x".repeat(1001) })), 400);
+  assert.equal((await ok(settings.GET())).pageTitle, "Главная");
+  await ok(settings.POST(req("/api/site-settings", { pageTitle: "Главная" })));
+  assert.equal((await ok(settings.GET())).pageDescription, "Описание главной");
+  await ok(settings.POST(req("/api/site-settings", { pageTitle: "Главная", pageDescription: "" })));
+  assert.equal((await ok(settings.GET())).pageDescription, titles.DEFAULT_HOME_DESCRIPTION);
+  assert.equal(validateSurvey({ ...s, pageDescription: 123 }), false);
+  assert.equal(validateSurvey({ ...s, pageDescription: "x".repeat(1001) }), false);
 });

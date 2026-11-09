@@ -11,7 +11,9 @@ type BackupStatus = {
 export default function SystemSettings({ onBack }: { onBack: () => void }) {
   const [surveys, setSurveys] = useState<{ id: string; title: string }[]>([]);
   const [pageTitle, setPageTitle] = useState("");
+  const [pageDescription, setPageDescription] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loadErrors, setLoadErrors] = useState<Record<string, string>>({});
   const [surveyIds, setSurveyIds] = useState<string[]>([]);
   const [users, setUsers] = useState<User[]>([]),
     [backup, setBackup] = useState<BackupStatus | null>(null),
@@ -35,18 +37,20 @@ export default function SystemSettings({ onBack }: { onBack: () => void }) {
               body: JSON.stringify(body),
             },
       ),
+      "admin",
     );
   }
   async function load() {
     setLoading(true);
+    setLoadErrors({});
     try {
+      const paths = ["Пользователи", "Резервные копии", "Главная страница"];
       const loaded = await Promise.allSettled([
         request("/api/team").then((team) => { setUsers(team.users); setSurveys(team.surveys); }),
         request("/api/backups").then((copies) => setBackup(copies)),
-        request("/api/site-settings").then((settings) => setPageTitle(settings.pageTitle)),
+        request("/api/site-settings").then((settings) => { setPageTitle(settings.pageTitle); setPageDescription(settings.pageDescription); }),
       ]);
-      const failed = loaded.find((result) => result.status === "rejected");
-      if (failed?.status === "rejected") throw failed.reason;
+      setLoadErrors(Object.fromEntries(loaded.flatMap((result, index) => result.status === "rejected" ? [[paths[index], result.reason instanceof Error ? result.reason.message : "Не удалось загрузить раздел"]] : [])));
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -72,6 +76,26 @@ export default function SystemSettings({ onBack }: { onBack: () => void }) {
       setBusy(false);
     }
   }
+  async function createUser() {
+    const login = username.trim();
+    setError("");
+    setNotice("");
+    if (!/^[a-zA-Z0-9._-]{3,40}$/.test(login)) {
+      setError("Логин: 3–40 символов. Используйте латинские буквы, цифры и символы . _ -");
+      return;
+    }
+    if (login.toLowerCase() === "admin") {
+      setError("Логин admin занят владельцем. Для нового администратора укажите другой логин.");
+      return;
+    }
+    if (password.length < 16 || password.length > 256) {
+      setError(`Пароль должен содержать от 16 до 256 символов. Сейчас: ${password.length}.`);
+      return;
+    }
+    if (await action("/api/team", { username: login, password, role, surveyIds: role === "admin" ? [] : surveyIds }, "Пользователь создан")) {
+      setUsername(""); setPassword(""); setSurveyIds([]);
+    }
+  }
   return (
     <div>
       <button className="text-button" onClick={onBack}>
@@ -92,14 +116,20 @@ export default function SystemSettings({ onBack }: { onBack: () => void }) {
       <fieldset disabled={busy || loading}>
         <section className="summary-card">
           <h3>Главная страница</h3>
+          {loadErrors["Главная страница"] && <p className="error" role="alert">Главная страница: {loadErrors["Главная страница"]}</p>}
           <label className="label">Title страницы · заголовок вкладки браузера
             <input maxLength={160} value={pageTitle} onChange={(e) => setPageTitle(e.target.value)} />
           </label>
           <p className="small">Используется на странице выбора опроса. Пустое поле вернёт стандартный заголовок.</p>
-          <button onClick={() => void action("/api/site-settings", { pageTitle }, "Заголовок главной страницы сохранён")}>Сохранить title</button>
+          <label className="label">Meta description · описание главной страницы
+            <textarea maxLength={1000} rows={3} value={pageDescription} onChange={(e) => setPageDescription(e.target.value)} />
+            <span className="small">Описание в HTML для поисковиков. Пустое поле вернёт стандартное описание.</span>
+          </label>
+          <button onClick={() => void action("/api/site-settings", { pageTitle, pageDescription }, "Заголовок и описание главной страницы сохранены")}>Сохранить title и описание</button>
         </section>
         <section className="summary-card">
           <h3>Пользователи кабинета</h3>
+          {loadErrors["Пользователи"] && <p className="error" role="alert">Пользователи: {loadErrors["Пользователи"]}</p>}
           <p className="small">
             Владелец входит как admin по существующему паролю. Администратор
             управляет доступом и копиями, редактор — опросами, наблюдатель
@@ -227,13 +257,13 @@ export default function SystemSettings({ onBack }: { onBack: () => void }) {
               </tbody>
             </table>
           </div>
+          <h4>Добавить пользователя</h4>
           {role !== "admin" && <fieldset><legend>Доступные опросы</legend>
             {surveys.map((survey) => <label className="checkbox-label" key={survey.id}>
               <input type="checkbox" checked={surveyIds.includes(survey.id)} onChange={(e) => setSurveyIds(e.target.checked ? [...surveyIds, survey.id] : surveyIds.filter((id) => id !== survey.id))} />{survey.title}
             </label>)}
             <p className="small">Без назначений пользователь не видит существующие опросы.</p>
           </fieldset>}
-          <h4>Добавить пользователя</h4>
           <div className="form-grid">
             <label className="label">
               Логин · 3–40 символов: латинские буквы, цифры, . _ -
@@ -250,11 +280,13 @@ export default function SystemSettings({ onBack }: { onBack: () => void }) {
               <input
                 type="password"
                 value={password}
+                aria-describedby="new-user-password-hint"
                 minLength={16}
                 maxLength={256}
                 autoComplete="new-password"
                 onChange={(e) => setPassword(e.target.value)}
               />
+              <span id="new-user-password-hint" className="small">Введено: {password.length} из минимум 16 символов.{password.length > 0 && password.length < 16 ? ` Добавьте ещё ${16 - password.length}.` : ""}</span>
             </label>
             <label className="label">
               Роль
@@ -268,24 +300,17 @@ export default function SystemSettings({ onBack }: { onBack: () => void }) {
           <p className="small">Логин admin занят владельцем. Создавать и менять пользователей может администратор.</p>
           <button
             className="primary"
-            disabled={!/^[a-zA-Z0-9._-]{3,40}$/.test(username.trim()) || username.trim().toLowerCase() === "admin" || password.length < 16}
-            onClick={() =>
-              void action(
-                "/api/team",
-                { username: username.trim(), password, role, surveyIds },
-                "Пользователь создан",
-              ).then((saved) => {
-                if (saved) {
-                  setUsername("");
-                  setPassword("");
-                  setSurveyIds([]);
-                }
-              })
-            }
+            onClick={() => void createUser()}
           >
             Создать пользователя
           </button>
         </section>
+        {loadErrors["Резервные копии"] && <section className="summary-card">
+          <h3>Резервные копии</h3>
+          <p className="error" role="alert">Резервные копии: {loadErrors["Резервные копии"]}</p>
+          <p className="small">Эта ошибка не блокирует создание пользователей и изменение настроек главной страницы.</p>
+          <button onClick={() => void load()}>Повторить загрузку настроек</button>
+        </section>}
         {backup && (
           <section className="summary-card">
             <h3>Автоматические резервные копии</h3>

@@ -304,6 +304,10 @@ export default function Editor({
               <input maxLength={160} value={s.pageTitle || ""} placeholder={`${s.title} · SANEXT`} onChange={(e) => update({ pageTitle: e.target.value })} />
               <span className="small">Пустое поле — название опроса и SANEXT.</span>
             </label>
+            <label className="label">Meta description · описание страницы опроса
+              <textarea maxLength={1000} rows={3} value={s.pageDescription || ""} placeholder={s.description} onChange={(e) => update({ pageDescription: e.target.value })} />
+              <span className="small">Пустое поле — подзаголовок опроса. Текст попадёт в meta name="description".</span>
+            </label>
             <label className="checkbox-label">
               <input type="checkbox" checked={s.unlisted === true} onChange={(e) => update({ unlisted: e.target.checked })} />
               Скрыть из списка опросов — доступ только по прямой ссылке

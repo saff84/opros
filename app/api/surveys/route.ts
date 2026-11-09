@@ -113,6 +113,7 @@ export async function POST(req: Request) {
     const now = new Date().toISOString();
     const s: Survey = {
       title: input.title.trim(),
+      ...(input.pageDescription?.trim() ? { pageDescription: input.pageDescription.trim() } : {}),
       ...(input.pageTitle?.trim() ? { pageTitle: input.pageTitle.trim() } : {}),
       description: input.description,
       intro: input.intro,

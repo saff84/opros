@@ -68,6 +68,7 @@ export type Question = {
 };
 export type Survey = {
   pageTitle?: string;
+  pageDescription?: string;
   unlisted?: boolean;
   cover?: { src: string; alt: string; fit?: "cover" | "contain"; position?: "center" | "top" | "bottom" };
   startForm?: StartForm;
