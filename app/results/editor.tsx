@@ -18,6 +18,7 @@ import { pageAnswerError } from "../survey-pages";
 import { otherKey } from "../../scripts/survey-features.mjs";
 import ExtendedQuestion from "./extended-question";
 import PreviewLink from "./preview-link";
+import CoverEditor from "./cover-editor";
 function localDate(value?: string) {
   if (!value) return "";
   const d = new Date(value);
@@ -299,6 +300,16 @@ export default function Editor({
                 onChange={(e) => update({ description: e.target.value })}
               />
             </label>
+            <label className="label">Title страницы · заголовок вкладки браузера
+              <input maxLength={160} value={s.pageTitle || ""} placeholder={`${s.title} · SANEXT`} onChange={(e) => update({ pageTitle: e.target.value })} />
+              <span className="small">Пустое поле — название опроса и SANEXT.</span>
+            </label>
+            <label className="checkbox-label">
+              <input type="checkbox" checked={s.unlisted === true} onChange={(e) => update({ unlisted: e.target.checked })} />
+              Скрыть из списка опросов — доступ только по прямой ссылке
+            </label>
+            <p className="small">Прямую ссылку можно переслать другому человеку. Эта настройка не требует входа от участников.</p>
+            <CoverEditor survey={s} onChange={(cover) => update({ cover })} onBusy={(busy) => setUploading(busy ? "cover" : null)} onError={setError} />
             <details className="question-config">
               <summary>Расписание публикации</summary>
               <p className="small">

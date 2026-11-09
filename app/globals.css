@@ -1299,6 +1299,16 @@ body {
   overflow-wrap: anywhere;
   margin: 22px 0 12px;
 }
+.survey-card-cover {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 12px;
+  background: #eef3f6;
+  margin-bottom: 18px;
+}
+.cover-preview { max-width: 420px; margin-top: 20px; }
+.cover-preview .survey-cards { grid-template-columns: minmax(0, 1fr); }
 .survey-card p {
   margin: 12px 0 24px;
 }

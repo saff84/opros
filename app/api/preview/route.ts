@@ -1,5 +1,5 @@
 import { getDatabase, getSurvey } from "../../runtime";
-import { canEdit, originOK, readBody, json } from "../../security";
+import { canEdit, canAccessSurvey, originOK, readBody, json } from "../../security";
 import { createPreviewLink } from "../../preview-access";
 
 async function change(req: Request, revoke: boolean) {
@@ -9,6 +9,7 @@ async function change(req: Request, revoke: boolean) {
   catch { return json({ error: "Некорректный запрос" }, 400); }
   if (typeof body?.surveyId !== "string" || !getSurvey(body.surveyId))
     return json({ error: "Сначала сохраните опрос" }, 404);
+  if (!(await canAccessSurvey(req, body.surveyId))) return json({ error: "Нет доступа к опросу" }, 403);
   if (revoke) {
     getDatabase().prepare("DELETE FROM survey_preview_links WHERE survey_id=?").run(body.surveyId);
     return json({ ok: true });

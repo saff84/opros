@@ -214,6 +214,7 @@ test("Team roles enforce server permissions, disable sessions and allow user pas
           username: "observer",
           password: "observer-initial-password",
           role: "viewer",
+          surveyIds: [tracked.id],
         }),
       )
     ).status,

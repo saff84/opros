@@ -1,6 +1,7 @@
 import { chromium, expect } from "@playwright/test";
 import { readFileSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
+import { runCatalogueBrowserChecks } from "./catalogue-browser-check.mjs";
 export async function runBrowserChecks({ origin, password }) {
   const browser = await chromium.launch({
     headless: true,
@@ -235,4 +236,5 @@ export async function runBrowserChecks({ origin, password }) {
     await context.close();
     await browser.close();
   }
+  await runCatalogueBrowserChecks({ origin, password });
 }

@@ -31,6 +31,9 @@ export function getDatabase() {
     "CREATE TABLE IF NOT EXISTS survey_versions (survey_id TEXT NOT NULL REFERENCES surveys(id), version INTEGER NOT NULL, definition TEXT NOT NULL, PRIMARY KEY(survey_id,version))",
   );
   db.exec("CREATE TABLE IF NOT EXISTS survey_preview_links (survey_id TEXT PRIMARY KEY REFERENCES surveys(id),token_hash TEXT UNIQUE NOT NULL,expires INTEGER NOT NULL)");
+  db.exec("CREATE TABLE IF NOT EXISTS survey_access (user_id TEXT NOT NULL REFERENCES team_users(id),survey_id TEXT NOT NULL REFERENCES surveys(id),PRIMARY KEY(user_id,survey_id))");
+  db.exec("CREATE TABLE IF NOT EXISTS image_uploaders (image_id TEXT PRIMARY KEY REFERENCES images(id),user_id TEXT NOT NULL)");
+  db.exec("CREATE TABLE IF NOT EXISTS template_owners (template_id TEXT PRIMARY KEY REFERENCES survey_templates(id),user_id TEXT NOT NULL REFERENCES team_users(id))");
   db.exec("BEGIN IMMEDIATE");
   try {
     if (process.env.ADMIN_PASSWORD && process.env.ADMIN_PASSWORD.length >= 16)

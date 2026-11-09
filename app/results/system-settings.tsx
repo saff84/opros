@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { apiJson } from "../api-client";
-type User = { id: string; username: string; role: string; active: number };
+type User = { id: string; username: string; role: string; active: number; surveyIds: string[] };
 type BackupStatus = {
   settings: { enabled: boolean; everyHours: number; retentionDays: number };
   files: { name: string; size: number; created: string }[];
@@ -9,6 +9,10 @@ type BackupStatus = {
   lastError: string | null;
 };
 export default function SystemSettings({ onBack }: { onBack: () => void }) {
+  const [surveys, setSurveys] = useState<{ id: string; title: string }[]>([]);
+  const [pageTitle, setPageTitle] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [surveyIds, setSurveyIds] = useState<string[]>([]);
   const [users, setUsers] = useState<User[]>([]),
     [backup, setBackup] = useState<BackupStatus | null>(null),
     [username, setUsername] = useState(""),
@@ -34,15 +38,19 @@ export default function SystemSettings({ onBack }: { onBack: () => void }) {
     );
   }
   async function load() {
+    setLoading(true);
     try {
-      const [team, copies] = await Promise.all([
-        request("/api/team"),
-        request("/api/backups"),
+      const loaded = await Promise.allSettled([
+        request("/api/team").then((team) => { setUsers(team.users); setSurveys(team.surveys); }),
+        request("/api/backups").then((copies) => setBackup(copies)),
+        request("/api/site-settings").then((settings) => setPageTitle(settings.pageTitle)),
       ]);
-      setUsers(team.users);
-      setBackup(copies);
+      const failed = loaded.find((result) => result.status === "rejected");
+      if (failed?.status === "rejected") throw failed.reason;
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      setLoading(false);
     }
   }
   useEffect(() => {
@@ -56,8 +64,10 @@ export default function SystemSettings({ onBack }: { onBack: () => void }) {
       await request(path, body);
       setNotice(message);
       await load();
+      return true;
     } catch (e) {
       setError((e as Error).message);
+      return false;
     } finally {
       setBusy(false);
     }
@@ -78,13 +88,22 @@ export default function SystemSettings({ onBack }: { onBack: () => void }) {
           {notice}
         </div>
       )}
-      <fieldset disabled={busy}>
+      {loading && <p role="status">Загружаем настройки…</p>}
+      <fieldset disabled={busy || loading}>
+        <section className="summary-card">
+          <h3>Главная страница</h3>
+          <label className="label">Title страницы · заголовок вкладки браузера
+            <input maxLength={160} value={pageTitle} onChange={(e) => setPageTitle(e.target.value)} />
+          </label>
+          <p className="small">Используется на странице выбора опроса. Пустое поле вернёт стандартный заголовок.</p>
+          <button onClick={() => void action("/api/site-settings", { pageTitle }, "Заголовок главной страницы сохранён")}>Сохранить title</button>
+        </section>
         <section className="summary-card">
           <h3>Пользователи кабинета</h3>
           <p className="small">
             Владелец входит как admin по существующему паролю. Администратор
             управляет доступом и копиями, редактор — опросами, наблюдатель
-            только читает отчёты. При изменении прав действующие сессии
+            только читает отчёты назначенных опросов. Владелец и администраторы имеют доступ ко всем опросам. Редактор автоматически получает доступ к созданным им опросам. При изменении прав действующие сессии
             пользователя закрываются.
           </p>
           <div className="table-scroll">
@@ -95,6 +114,7 @@ export default function SystemSettings({ onBack }: { onBack: () => void }) {
                   <th>Роль</th>
                   <th>Доступ</th>
                   <th>Пароль</th>
+                  <th>Доступные опросы</th>
                 </tr>
               </thead>
               <tbody>
@@ -158,9 +178,11 @@ export default function SystemSettings({ onBack }: { onBack: () => void }) {
                                   password: resetPassword,
                                 },
                                 "Пароль обновлён",
-                              ).then(() => {
-                                setResetPassword("");
-                                setResetUser("");
+                              ).then((saved) => {
+                                if (saved) {
+                                  setResetPassword("");
+                                  setResetUser("");
+                                }
                               })
                             }
                           >
@@ -186,18 +208,39 @@ export default function SystemSettings({ onBack }: { onBack: () => void }) {
                         </button>
                       )}
                     </td>
+                    <td>
+                      {user.role === "admin" ? "Все опросы" : (
+                        <div>
+                          {surveys.map((survey) => (
+                            <label className="checkbox-label" key={survey.id}>
+                              <input type="checkbox" checked={user.surveyIds.includes(survey.id)}
+                                onChange={(e) => setUsers(users.map((item) => item.id === user.id ? { ...item, surveyIds: e.target.checked ? [...item.surveyIds, survey.id] : item.surveyIds.filter((id) => id !== survey.id) } : item))} />
+                              {survey.title}
+                            </label>
+                          ))}
+                          <button onClick={() => void action("/api/team", { ...user, active: !!user.active }, "Доступ к опросам сохранён")}>Сохранить доступ</button>
+                        </div>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+          {role !== "admin" && <fieldset><legend>Доступные опросы</legend>
+            {surveys.map((survey) => <label className="checkbox-label" key={survey.id}>
+              <input type="checkbox" checked={surveyIds.includes(survey.id)} onChange={(e) => setSurveyIds(e.target.checked ? [...surveyIds, survey.id] : surveyIds.filter((id) => id !== survey.id))} />{survey.title}
+            </label>)}
+            <p className="small">Без назначений пользователь не видит существующие опросы.</p>
+          </fieldset>}
           <h4>Добавить пользователя</h4>
           <div className="form-grid">
             <label className="label">
-              Логин
+              Логин · 3–40 символов: латинские буквы, цифры, . _ -
               <input
                 value={username}
                 maxLength={40}
+                minLength={3}
                 autoComplete="off"
                 onChange={(e) => setUsername(e.target.value)}
               />
@@ -222,15 +265,22 @@ export default function SystemSettings({ onBack }: { onBack: () => void }) {
               </select>
             </label>
           </div>
+          <p className="small">Логин admin занят владельцем. Создавать и менять пользователей может администратор.</p>
           <button
             className="primary"
-            disabled={!username || password.length < 16}
+            disabled={!/^[a-zA-Z0-9._-]{3,40}$/.test(username.trim()) || username.trim().toLowerCase() === "admin" || password.length < 16}
             onClick={() =>
               void action(
                 "/api/team",
-                { username, password, role },
+                { username: username.trim(), password, role, surveyIds },
                 "Пользователь создан",
-              ).then(() => setPassword(""))
+              ).then((saved) => {
+                if (saved) {
+                  setUsername("");
+                  setPassword("");
+                  setSurveyIds([]);
+                }
+              })
             }
           >
             Создать пользователя

@@ -5,12 +5,13 @@
   getSurveyVersions,
   getDatabase,
 } from "../../runtime";
-import { json, isAdmin } from "../../security";
+import { json, isAdmin, canAccessSurvey } from "../../security";
 export async function GET(req: Request) {
   if (!(await isAdmin(req))) return json({ error: "Требуется вход" }, 401);
   const params = new URL(req.url).searchParams,
     current = getSurvey(params.get("survey") || "legacy");
   if (!current) return json({ error: "Опрос не найден" }, 404);
+  if (!(await canAccessSurvey(req, current.id))) return json({ error: "Нет доступа к опросу" }, 403);
   const version = params.has("version")
     ? Number(params.get("version"))
     : current.schemaVersion || 1;

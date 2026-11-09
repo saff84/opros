@@ -1,6 +1,7 @@
 ﻿import { visibleQuestions, branchingError, ShowWhen } from "./branching";
 import { tools, ratings, barriers, needs, titles, Answers } from "./data";
 import { validWelcome } from "../scripts/welcome.mjs";
+import { validCatalogue } from "../scripts/catalogue.mjs";
 import { validStartForm } from "../scripts/start-form.mjs";
 export type StartField = {
   mode?: "hidden" | "optional" | "required";
@@ -66,6 +67,9 @@ export type Question = {
   image?: { src: string; alt: string };
 };
 export type Survey = {
+  pageTitle?: string;
+  unlisted?: boolean;
+  cover?: { src: string; alt: string; fit?: "cover" | "contain"; position?: "center" | "top" | "bottom" };
   startForm?: StartForm;
   startsAt?: string;
   endsAt?: string;
@@ -313,6 +317,7 @@ export function validateAnswers(
 export function validateSurvey(value: unknown): value is Survey {
   if (!value || typeof value !== "object") return false;
   const s = value as Survey;
+  if (!validCatalogue(s)) return false;
   if (!validWelcome(s.welcome)) return false;
   if (!validStartForm(s.startForm)) return false;
   if (!validSchedule(s)) return false;

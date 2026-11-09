@@ -59,7 +59,7 @@ export async function POST(req: Request) {
       );
     if (body.action === "start") {
       if (!id) {
-        if (!rateLimit("new-session", 300, 3600_000))
+        if (!rateLimit("new-session:" + s.id, 300, 3600_000))
           return json({ error: "Лимит новых сессий. Попробуйте позже." }, 429);
         id = crypto.randomUUID();
       }
@@ -85,7 +85,7 @@ export async function POST(req: Request) {
           }
         }
         initialName = previous.name;
-        if (!rateLimit("new-session", 300, 3600_000))
+        if (!rateLimit("new-session:" + s.id, 300, 3600_000))
           return json({ error: "Лимит новых сессий. Попробуйте позже." }, 429);
         const successor = db
           .prepare(

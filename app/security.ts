@@ -1,6 +1,7 @@
 ﻿import { checkPassword, credentials, visitorSecret } from "./credentials";
 import { createHash, randomBytes } from "node:crypto";
 import { getDatabase } from "./runtime";
+import { surveyImageSources } from "../scripts/welcome.mjs";
 export function cookie(req: Request, key: string) {
   return req.headers
     .get("cookie")
@@ -81,6 +82,21 @@ export async function canEdit(req: Request) {
 export async function canManage(req: Request) {
   const u = await adminIdentity(req);
   return !!u && ["owner", "admin"].includes(u.role);
+}
+export async function canAccessSurvey(req: Request, surveyId: string) {
+  const u = await adminIdentity(req);
+  return !!u && (["owner", "admin"].includes(u.role) || !!getDatabase()
+    .prepare("SELECT 1 FROM survey_access WHERE user_id=? AND survey_id=?")
+    .get(u.id, surveyId));
+}
+export async function canAccessImage(req: Request, imageId: string) {
+  const u = await adminIdentity(req);
+  if (!u) return false;
+  if (["owner", "admin"].includes(u.role)) return true;
+  const db = getDatabase();
+  if (db.prepare("SELECT 1 FROM image_uploaders WHERE image_id=? AND user_id=?").get(imageId, u.id)) return true;
+  return db.prepare("SELECT s.definition FROM surveys s JOIN survey_access a ON a.survey_id=s.id WHERE a.user_id=? UNION SELECT v.definition FROM survey_versions v JOIN survey_access a ON a.survey_id=v.survey_id WHERE a.user_id=?").all(u.id, u.id)
+    .some((row) => surveyImageSources(JSON.parse(row.definition as string)).includes("/api/images/" + imageId));
 }
 export function revokeAdmin(req: Request) {
   for (const token of [

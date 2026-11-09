@@ -72,6 +72,7 @@ export function validWelcome(value) {
 export function surveyImageSources(survey) {
   return [
     ...new Set([
+      ...(survey.cover ? [survey.cover.src] : []),
       ...survey.questions.flatMap((q) => (q.image ? [q.image.src] : [])),
       ...survey.questions.flatMap((q) =>
         Object.values(q.optionImages || {}).map((image) => image.src),

@@ -1,5 +1,5 @@
 ﻿import { getDatabase, getSurvey } from "../../runtime";
-import { isAdmin, canEdit, json, originOK, readBody } from "../../security";
+import { isAdmin, canEdit, canAccessSurvey, canAccessImage, adminIdentity, json, originOK, readBody } from "../../security";
 import { Survey, validateSurvey } from "../../survey-model";
 import { surveyImageSources } from "../../../scripts/welcome.mjs";
 import { isSurveyOpen } from "../../../scripts/survey-features.mjs";
@@ -12,18 +12,20 @@ export async function GET(req: Request) {
       (await isAdmin(req));
   const id = new URL(req.url).searchParams.get("id");
   if (id) {
+    if (admin && !(await canAccessSurvey(req, id))) return json({ error: "Нет доступа к опросу" }, 403);
     const s = getSurvey(id);
     return s && (admin || isSurveyOpen(s))
       ? json({ survey: s })
       : json({ error: "Опрос не найден или закрыт" }, 404);
   }
-  const surveys = (
+  const allSurveys = (
     db
       .prepare("SELECT definition FROM surveys ORDER BY rowid DESC")
       .all() as any[]
   )
     .map((r) => JSON.parse(r.definition) as Survey)
-    .filter((s) => admin || isSurveyOpen(s));
+    .filter((s) => admin || (isSurveyOpen(s) && !s.unlisted));
+  const surveys = admin ? (await Promise.all(allSurveys.map(async (s) => (await canAccessSurvey(req, s.id)) ? s : null))).filter((s): s is Survey => !!s) : allSurveys;
   return json({
     surveys: surveys.map((s) =>
       admin
@@ -40,6 +42,7 @@ export async function GET(req: Request) {
             title: s.title,
             description: s.description,
             accent: s.accent,
+            ...(s.cover ? { cover: s.cover } : {}),
           },
     ),
   });
@@ -62,6 +65,13 @@ export async function POST(req: Request) {
     );
   const input = body.survey as Survey,
     db = getDatabase();
+  if (body.create !== true && !(await canAccessSurvey(req, input.id)))
+    return json({ error: "Нет доступа к опросу" }, 403);
+  const identity = await adminIdentity(req);
+  for (const src of surveyImageSources(input)) {
+    if (!(await canAccessImage(req, src.split("/").pop()!)))
+      return json({ error: "Нет доступа к изображению. Загрузите его заново." }, 403);
+  }
   if (
     body.create !== true &&
     (typeof input.id !== "string" ||
@@ -103,12 +113,15 @@ export async function POST(req: Request) {
     const now = new Date().toISOString();
     const s: Survey = {
       title: input.title.trim(),
+      ...(input.pageTitle?.trim() ? { pageTitle: input.pageTitle.trim() } : {}),
       description: input.description,
       intro: input.intro,
       thanks: input.thanks,
       accent: input.accent,
       background: input.background,
       status: input.status,
+      unlisted: input.unlisted === true,
+      ...(input.cover ? { cover: input.cover } : {}),
       questions: input.questions,
       ...(input.startForm ? { startForm: input.startForm } : {}),
       ...(input.startsAt ? { startsAt: input.startsAt } : {}),
@@ -134,6 +147,8 @@ export async function POST(req: Request) {
     db.prepare(
       "INSERT INTO survey_versions VALUES (?,?,?) ON CONFLICT(survey_id,version) DO UPDATE SET definition=excluded.definition",
     ).run(s.id, s.schemaVersion || 1, JSON.stringify(s));
+    if (body.create === true && identity?.role === "editor")
+      db.prepare("INSERT OR IGNORE INTO survey_access VALUES (?,?)").run(identity.id, s.id);
     db.exec("COMMIT");
     return json({ survey: s });
   } catch (e) {

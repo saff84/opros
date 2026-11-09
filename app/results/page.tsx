@@ -123,7 +123,7 @@ export default function Results() {
   async function check() {
     setBusy(true);
     try {
-      await request("/api/results");
+      await request("/api/login");
       setAuth(true);
       await load();
     } catch (e) {

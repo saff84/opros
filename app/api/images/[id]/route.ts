@@ -1,5 +1,5 @@
 ﻿import { getDatabase } from "../../../runtime";
-import { isAdmin, json } from "../../../security";
+import { canAccessImage, json } from "../../../security";
 import { surveyImageSources } from "../../../../scripts/welcome.mjs";
 import { isSurveyOpen } from "../../../../scripts/survey-features.mjs";
 import { previewSurvey } from "../../../preview-access";
@@ -11,7 +11,7 @@ export async function GET(
   if (!/^[0-9a-f-]{36}$/.test(id))
     return json({ error: "Картинка не найдена" }, 404);
   const db = getDatabase(),
-    admin = await isAdmin(req);
+    admin = await canAccessImage(req, id);
   const row = db.prepare("SELECT mime,data FROM images WHERE id=?").get(id) as
     { mime: string; data: Uint8Array } | undefined;
   if (!row) return json({ error: "Картинка не найдена" }, 404);

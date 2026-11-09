@@ -15,7 +15,8 @@ export async function GET(req: Request) {
       .prepare(
         "SELECT id,username,role,active FROM team_users ORDER BY username",
       )
-      .all(),
+      .all().map((user) => ({ ...user, surveyIds: getDatabase().prepare("SELECT survey_id FROM survey_access WHERE user_id=?").all(user.id as string).map((row) => row.survey_id) })),
+    surveys: getDatabase().prepare("SELECT id,definition FROM surveys ORDER BY rowid DESC").all().map((row) => ({ id: row.id, title: JSON.parse(row.definition as string).title })),
   });
 }
 export async function POST(req: Request) {
@@ -30,6 +31,15 @@ export async function POST(req: Request) {
   }
   const db = getDatabase(),
     self = await adminIdentity(req);
+  if (b?.surveyIds !== undefined && (!Array.isArray(b.surveyIds) || b.surveyIds.length > 1000 ||
+    b.surveyIds.some((id: unknown) => typeof id !== "string" || !db.prepare("SELECT id FROM surveys WHERE id=?").get(id))))
+    return json({ error: "Проверьте список доступных опросов" }, 400);
+  const saveAccess = (id: string) => {
+    if (b.surveyIds === undefined) return;
+    db.prepare("DELETE FROM survey_access WHERE user_id=?").run(id);
+    for (const surveyId of new Set<string>(b.surveyIds))
+      db.prepare("INSERT INTO survey_access VALUES (?,?)").run(id, surveyId);
+  };
   if (b?.id) {
     if (typeof b.id !== "string" || b.id === self?.id)
       return json(
@@ -50,6 +60,8 @@ export async function POST(req: Request) {
         b.password.length > 256)
     )
       return json({ error: "Пароль: 16–256 символов" }, 400);
+    db.exec("BEGIN IMMEDIATE");
+    try {
     db.prepare("UPDATE team_users SET role=?,active=? WHERE id=?").run(
       b.role,
       b.active ? 1 : 0,
@@ -64,6 +76,9 @@ export async function POST(req: Request) {
       );
     }
     db.prepare("DELETE FROM team_sessions WHERE user_id=?").run(b.id);
+    saveAccess(b.id);
+    db.exec("COMMIT");
+    } catch (error) { db.exec("ROLLBACK"); throw error; }
   } else {
     if (
       typeof b?.username !== "string" ||
@@ -88,13 +103,19 @@ export async function POST(req: Request) {
     )
       return json({ error: "Этот логин уже используется" }, 409);
     const record = passwordRecord(b.password);
+    const id = crypto.randomUUID();
+    db.exec("BEGIN IMMEDIATE");
+    try {
     db.prepare("INSERT INTO team_users VALUES (?,?,?,?,?,1)").run(
-      crypto.randomUUID(),
+      id,
       b.username.toLowerCase(),
       record.salt,
       record.hash,
       b.role,
     );
+    saveAccess(id);
+    db.exec("COMMIT");
+    } catch (error) { db.exec("ROLLBACK"); throw error; }
   }
   return json({ ok: true });
 }

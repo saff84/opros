@@ -4,6 +4,7 @@ export type PublicSurvey = {
   title: string;
   description: string;
   accent: string;
+  cover?: { src: string; alt: string; fit?: "cover" | "contain"; position?: "center" | "top" | "bottom" };
 };
 export function SurveyChooser({ surveys }: { surveys: PublicSurvey[] }) {
   return surveys.length ? (
@@ -15,6 +16,7 @@ export function SurveyChooser({ surveys }: { surveys: PublicSurvey[] }) {
           href={"/?survey=" + encodeURIComponent(s.id)}
           style={{ borderTopColor: s.accent }}
         >
+          {s.cover && <img className="survey-card-cover" src={s.cover.src} alt={s.cover.alt} style={{ objectFit: s.cover.fit || "cover", objectPosition: s.cover.position || "center" }} />}
           <span className="badge completed">Активен · принимает ответы</span>
           <h2>{s.title}</h2>
           <p>{s.description}</p>

@@ -1,5 +1,5 @@
 ﻿import { getDatabase } from "../../runtime";
-import { isAdmin, canEdit, originOK, json, rateLimit } from "../../security";
+import { isAdmin, canEdit, adminIdentity, originOK, json, rateLimit } from "../../security";
 import {
   detectImage,
   MAX_IMAGE_BYTES,
@@ -35,5 +35,7 @@ export async function POST(req: Request) {
   getDatabase()
     .prepare("INSERT INTO images VALUES (?,?,?,?)")
     .run(id, mime, data, new Date().toISOString());
+  const user = await adminIdentity(req);
+  getDatabase().prepare("INSERT INTO image_uploaders VALUES (?,?)").run(id, user!.id);
   return json({ image: { src: "/api/images/" + id, alt: "" } }, 201);
 }
