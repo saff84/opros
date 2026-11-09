@@ -81,6 +81,32 @@ test("preview links rotate, expire and can be revoked", async () => {
   assert.equal(previewSurvey("invalid"), null);
 });
 
+test("Preview metadata uses saved survey settings and protects expired or revoked links", async () => {
+  const { generateMetadata } = require("../app/preview/page.tsx");
+  const saved = { ...survey, pageTitle: "Заголовок предпросмотра", pageDescription: "Описание предпросмотра" };
+  db.prepare("UPDATE surveys SET definition=? WHERE id=?").run(JSON.stringify(saved), survey.id);
+  const token = tokenOf(await (await api.POST(req())).json());
+  const metadata = () => generateMetadata({ searchParams: Promise.resolve({ token }) });
+  const first = await metadata();
+  assert.equal(first.title, saved.pageTitle);
+  assert.equal(first.description, saved.pageDescription);
+  assert.deepEqual(first.robots, { index: false, follow: false });
+  assert.equal(first.referrer, "no-referrer");
+  db.prepare("UPDATE surveys SET definition=? WHERE id=?").run(JSON.stringify({ ...saved, pageTitle: "", pageDescription: "", description: "Новый подзаголовок" }), survey.id);
+  const updated = await metadata();
+  assert.equal(updated.title, `${saved.title} · SANEXT`);
+  assert.equal(updated.description, "Новый подзаголовок");
+  db.prepare("UPDATE survey_preview_links SET expires=0 WHERE survey_id=?").run(survey.id);
+  assert.equal((await metadata()).title, "Предпросмотр недоступен");
+  const nextToken = tokenOf(await (await api.POST(req())).json());
+  await api.DELETE(req("DELETE"));
+  for (const invalid of [nextToken, "invalid", undefined]) {
+    const hidden = await generateMetadata({ searchParams: Promise.resolve({ token: invalid }) });
+    assert.equal(hidden.title, "Предпросмотр недоступен");
+    assert.equal(hidden.description, "Ссылка отключена или срок её действия истёк.");
+  }
+});
+
 test("scales fill cumulatively while only the actual answer is selected", () => {
   const React = require("react");
   const { renderToStaticMarkup } = require("react-dom/server");
